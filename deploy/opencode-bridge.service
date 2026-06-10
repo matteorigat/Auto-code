@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenCode Telegram Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/projects/opencode-bridge-telegram
+ExecStart=/usr/bin/node /home/ubuntu/projects/opencode-bridge-telegram/index.mjs
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=HEALTH_PORT=9090
+EnvironmentFile=-/home/ubuntu/projects/opencode-bridge-telegram/.env
+
+[Install]
+WantedBy=multi-user.target

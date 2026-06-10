@@ -1,0 +1,90 @@
+model_list:
+  # ==========================================
+  # TIER 4: Complex Coding & Planning
+  # ==========================================
+  - model_name: tier-4-planner
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v4-flash:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      rpm: 20
+  - model_name: tier-4-planner
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+      rpm: 30
+  - model_name: tier-4-planner
+    litellm_params:
+      model: mistral/mistral-large-2411
+      api_key: os.environ/MISTRAL_API_KEY
+      rpm: 26
+  - model_name: tier-4-planner
+    litellm_params:
+      model: cerebras/gpt-oss-120b
+      api_key: os.environ/CEREBRAS_API_KEY
+      rpm: 5
+  - model_name: tier-4-planner
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      rpm: 20
+
+  # ==========================================
+  # TIER 3: Standard Builders & QA
+  # ==========================================
+  - model_name: tier-3-builder
+    litellm_params:
+      model: openrouter/qwen/qwen3-coder:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      rpm: 20
+  - model_name: tier-3-builder
+    litellm_params:
+      model: mistral/codestral-2508
+      api_key: os.environ/MISTRAL_API_KEY
+      rpm: 125
+  - model_name: tier-3-builder
+    litellm_params:
+      model: groq/qwen/qwen3-32b
+      api_key: os.environ/GROQ_API_KEY
+      rpm: 60
+
+  # ==========================================
+  # TIER 2: Bug Hunter & Discovery
+  # ==========================================
+  - model_name: tier-2-hunter
+    litellm_params:
+      model: openrouter/google/gemma-4-31b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      rpm: 20
+  - model_name: tier-2-hunter
+    litellm_params:
+      model: mistral/ministral-8b-2512
+      api_key: os.environ/MISTRAL_API_KEY
+      rpm: 188
+
+  # ==========================================
+  # TIER 1: Trivial & Fast Tasks
+  # ==========================================
+  - model_name: tier-1-trivial
+    litellm_params:
+      model: groq/llama-3.1-8b-instant
+      api_key: os.environ/GROQ_API_KEY
+      rpm: 30
+  - model_name: tier-1-trivial
+    litellm_params:
+      model: openrouter/meta-llama/llama-3.2-3b-instruct:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      rpm: 20
+
+router_settings:
+  routing_strategy: usage-based-routing-v2 # Round-robin with RPM limits
+  num_retries: 3           # Retry 3 times across fallback models
+  allowed_fails: 2         # Cooldown if a model fails 2 times
+  cooldown_time: 60        # Cooldown for 60 seconds
+  timeout: 120             # Max seconds per request
+
+litellm_settings:
+  custom_callbacks:
+    - litellm_logger.proxy_handler_instance
+
+general_settings:
+  master_key: sk-litellm-local

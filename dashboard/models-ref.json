@@ -1,0 +1,218 @@
+[
+  {
+    "model": "deepseek/deepseek-v4-flash:free",
+    "provider": "openrouter",
+    "context": 1000000,
+    "rpm": 20,
+    "rpd": 1000,
+    "tpd": null,
+    "note": "coding/reasoning"
+  },
+  {
+    "model": "qwen/qwen3-coder:free",
+    "provider": "openrouter",
+    "context": 1000000,
+    "rpm": 20,
+    "rpd": 1000,
+    "tpd": null,
+    "note": "coding agentico"
+  },
+  {
+    "model": "minimax/minimax-m2.5:free",
+    "provider": "openrouter",
+    "context": 205000,
+    "rpm": 20,
+    "rpd": 1000,
+    "tpd": null,
+    "note": "produttivita"
+  },
+  {
+    "model": "google/gemma-4-31b-it:free",
+    "provider": "openrouter",
+    "context": 262000,
+    "rpm": 20,
+    "rpd": 1000,
+    "tpd": null,
+    "note": "generalista/multimodale"
+  },
+  {
+    "model": "google/gemma-4-26b-a4b-it:free",
+    "provider": "openrouter",
+    "context": 262000,
+    "rpm": 20,
+    "rpd": 1000,
+    "tpd": null,
+    "note": "generalista/multimodale"
+  },
+  {
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "provider": "openrouter",
+    "context": 1000000,
+    "rpm": 20,
+    "rpd": 1000,
+    "tpd": null,
+    "note": "generalista/reasoning"
+  },
+  {
+    "model": "openai/gpt-oss-120b:free",
+    "provider": "openrouter",
+    "context": 131000,
+    "rpm": 20,
+    "rpd": 1000,
+    "tpd": null,
+    "note": "reasoning/generalista"
+  },
+  {
+    "model": "z-ai/glm-4.5-air:free",
+    "provider": "openrouter",
+    "context": 131000,
+    "rpm": 20,
+    "rpd": 1000,
+    "tpd": null,
+    "note": "agentic/reasoning"
+  },
+  {
+    "model": "meta-llama/llama-3.3-70b-instruct:free",
+    "provider": "openrouter",
+    "context": 131000,
+    "rpm": 20,
+    "rpd": 1000,
+    "tpd": null,
+    "note": "generalista"
+  },
+  {
+    "model": "poolside/laguna-m.1:free",
+    "provider": "openrouter",
+    "context": 262000,
+    "rpm": 20,
+    "rpd": 1000,
+    "tpd": null,
+    "note": "coding agentico"
+  },
+  {
+    "model": "moonshotai/kimi-k2.6:free",
+    "provider": "openrouter",
+    "context": 262000,
+    "rpm": 20,
+    "rpd": 1000,
+    "tpd": null,
+    "note": "long context"
+  },
+  {
+    "model": "qwen/qwen3-32b",
+    "provider": "groq",
+    "context": null,
+    "rpm": 60,
+    "rpd": 1000,
+    "tpd": 500000,
+    "note": "text generation"
+  },
+  {
+    "model": "llama-3.1-8b-instant",
+    "provider": "groq",
+    "context": null,
+    "rpm": 30,
+    "rpd": 14400,
+    "tpd": 500000,
+    "note": "text generation"
+  },
+  {
+    "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+    "provider": "groq",
+    "context": null,
+    "rpm": 30,
+    "rpd": 1000,
+    "tpd": 500000,
+    "note": "text generation"
+  },
+  {
+    "model": "llama-3.3-70b-versatile",
+    "provider": "groq",
+    "context": null,
+    "rpm": 30,
+    "rpd": 1000,
+    "tpd": 100000,
+    "note": "text generation"
+  },
+  {
+    "model": "openai/gpt-oss-120b",
+    "provider": "groq",
+    "context": null,
+    "rpm": 30,
+    "rpd": 1000,
+    "tpd": 200000,
+    "note": "text generation/reasoning"
+  },
+  {
+    "model": "mistral-large-2411",
+    "provider": "mistral",
+    "context": null,
+    "rpm": 26,
+    "rpd": null,
+    "tpd": null,
+    "note": "text generation"
+  },
+  {
+    "model": "codestral-2508",
+    "provider": "mistral",
+    "context": null,
+    "rpm": 125,
+    "rpd": null,
+    "tpd": null,
+    "note": "coding"
+  },
+  {
+    "model": "ministral-8b-2512",
+    "provider": "mistral",
+    "context": null,
+    "rpm": 188,
+    "rpd": null,
+    "tpd": null,
+    "note": "text generation"
+  },
+  {
+    "model": "gpt-oss-120b",
+    "provider": "cerebras",
+    "context": 65536,
+    "rpm": 5,
+    "rpd": 2400,
+    "tpd": 1000000,
+    "note": "Production"
+  },
+  {
+    "model": "zai-glm-4.7",
+    "provider": "cerebras",
+    "context": 64000,
+    "rpm": 5,
+    "rpd": 2400,
+    "tpd": 1000000,
+    "note": "Preview"
+  },
+  {
+    "model": "gemma-4-31b-it",
+    "provider": "google",
+    "context": null,
+    "rpm": 15,
+    "rpd": 1500,
+    "tpd": null,
+    "note": "text generation"
+  },
+  {
+    "model": "moonshotai/kimi-k2.5",
+    "provider": "nvidia",
+    "context": 262144,
+    "rpm": 40,
+    "rpd": null,
+    "tpd": null,
+    "note": "NVIDIA free tier"
+  },
+  {
+    "model": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+    "provider": "nvidia",
+    "context": 262144,
+    "rpm": 40,
+    "rpd": null,
+    "tpd": null,
+    "note": "NVIDIA free tier"
+  }
+]
