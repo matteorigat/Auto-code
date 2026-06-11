@@ -148,21 +148,29 @@
                      │        PLAN ─── (task-planner)         │
                      │          │                             │
                      │          ▼                             │
-                     │ ┌──►  EXEC ─── (Builder, test-first)   │
-                     │ │       │                              │
-                     │ │   ┌───┴────┐                         │
-                     │ │   ▼        ▼                         │
-                     │ │ PAUSED   FIX ◄──┐                    │
-                     │ │ (per-     │     │                    │
-                     │ │ project)  │     │                    │
-                     │ │   │       ▼     │                    │
-                     │ │   │      QA ────┘                    │
-                     │ │   │       │                           │
-                     │ │   │       ▼                           │
-                     │ │   │    COMMIT                         │
-                     │ │   │       │                           │
-                     │ │   │       ▼                           │
-                     │ │   └───── SYNC ────────────────────────┘
+                     │        SWARM ─── (Architect/Reviewer)  │
+                     │          │                             │
+                     │          ▼                             │
+                     │ ┌──►   EXEC ─── (Builder, test-first)  │
+                     │ │        │                             │
+                     │ │   ┌────┴────┐                        │
+                     │ │   ▼         ▼                        │
+                     │ │ WAIT_HUMAN FIX ◄──┐                  │
+                     │ │ (HITL)      │     │                  │
+                     │ │   │         ▼     │                  │
+                     │ │   │        QA ────┘                  │
+                     │ │   │         │                        │
+                     │ │   │         ▼                        │
+                     │ │   │     VISUAL_QA                    │
+                     │ │   │         │                        │
+                     │ │   │         ▼                        │
+                     │ │   │      COMMIT                      │
+                     │ │   │         │                        │
+                     │ │   │         ▼                        │
+                     │ │   │      REFLECT                     │
+                     │ │   │         │                        │
+                     │ │   │         ▼                        │
+                     │ │   └─────── SYNC ─────────────────────┘
                      │ │
                      │ └── DISCOVER (ciclo completo scoperta)
                      │      ├── bug-hunter → bugs.md
@@ -172,21 +180,22 @@
                      │      └── sync nuove storie → Notion
 ```
 
-**Pause è per-progetto, non globale.** Se un progetto va in pausa (budget, stagnazione, max tentativi), il loop continua a processare gli altri progetti. I progetti in pausa sono registrati in `.hydra/paused-projects.json` e saltati da `getNextPending()`.
-
 ### Phase Details
 
 | Phase | Handler | What it does | SDD Role |
 |-------|---------|-------------|----------|
-| `IDLE` | `phaseIDLE()` | Load tasks da Notion + prd.json. Aggiorna registro. Scopre nuovi progetti. Auto-unpause progetti le cui condizioni non sussistono più. Conta solo task disponibili (non in pausa). Se nessun task → DISCOVER. | Source sync |
-| `PLAN` | `phasePLAN()` | Pick prossimo pending NON in pausa. Split se oversized. Se tutti i pending sono in pausa → IDLE. Avvia `task-planner` genera test stub. | Spec generation |
-| `EXEC` | `phaseEXEC()` | Spawn `AgentRuntime` builder SDD. `question.asked`/`permission.asked` auto-approvati (LLM ha pieno accesso). Stagnation → pausa progetto. Budget superato → pausa progetto. | Implementation |
-| `QA` | `phaseQA()` | QualityGate (typecheck, test, lint, build). Skip se no config. Se fallisce → rollback + FIX. | Validation |
-| `COMMIT` | `phaseCOMMIT()` | git add + commit. | Persistence |
-| `SYNC` | `phaseSYNC()` | Push Notion. Persiste prd.json. Rebuild project files. | Sync |
-| `FIX` | `phaseFIX()` | Incrementa attempt. Rollback snapshot. Se >= maxAttempts → BLOCKED + pausa progetto. Altro → ri-EXEC. | Error recovery |
-| `DISCOVER` | `phaseDISCOVER()` | Per progetto: bug-hunter → innovator → orchestrator → project-planner (solo nuovo). Push storie a Notion. | Discovery |
-| `WAIT_HUMAN` | `phaseWAIT_HUMAN()` | Persist checkpoint. Poll resume-signal.json. Usato solo per circuito esterno (non auto-transizione dal loop). | Human gate |
+| `IDLE` | `handleIdle()` | Carica i task da Notion e prd.json local. Controlla e innesca la compattazione del log se necessario. Resetta `storiesCompletedToday` ad ogni cambio giorno. Se zero task rimasti -> DISCOVER. | Source sync |
+| `PLAN` | `handlePlan()` | Sceglie il prossimo task pendente non in pausa. Divide i task se troppo grandi. Configura il workspace. Passa a SWARM. | Spec generation |
+| `SWARM` | `handleSwarm()` | Negoziazione multi-agente tra Architect e Reviewer per stabilire un consensus tecnico salvato in `.hydra-swarm-consensus.md`. Passa a EXEC. | Multi-Agent Consensus |
+| `EXEC` | `handleExec()` | Esegue il builder sub-agent. Imposta `currentTaskId` e `currentStory` nel checkpoint. Stagnation o budget superato sospendono il progetto. | Implementation |
+| `QA` | `handleQa()` | Elimina il file di consenso di swarm. Esegue il QualityGate (typecheck, test, lint, build) con fallback locale se Docker è assente. Se fallisce -> FIX. | Validation |
+| `VISUAL_QA` | `handleVisualQa()` | Effettua screenshot della webapp tramite Puppeteer ed invoca il visual-reviewer. Se approvato -> COMMIT, altrimenti -> FIX. | Visual Validation |
+| `COMMIT` | `handleCommit()` | Crea un commit git e fa il merge del branch del task. Incrementa `storiesCompletedToday`. Passa a REFLECT. | Persistence |
+| `REFLECT` | `handleReflect()` | Estrae skill e design patterns dal git diff tramite skill-extractor e li salva in `.hydra/skills/`. Passa a SYNC. | Learning / Optimization |
+| `SYNC` | `handleSync()` | Pushes progress information back to Notion and then transitions to IDLE. | Bidirectional Sync |
+| `FIX` | `handleFix()` | Invoca il patcher sub-agent, valida il path della diff contro attacchi path traversal, applica la patch ed esegue nuovamente QA. Se attempts > 3 -> BLOCKED. | Error recovery |
+| `DISCOVER` | `handleDiscover()` | Esegue bug-hunter, innovator, orchestrator per popolare il backlog e sincronizzare nuove storie su Notion. | Discovery |
+| `WAIT_HUMAN` | `handleWaitHuman()` | Mette in pausa il loop ed effettua il polling di `resume-signal.json` ogni 3s per riprendere il flusso dall'ultima fase registrata. | Human gate |
 
 ## 5. SDD Cycle — Dalla Scoperta al Progetto Finito
 
@@ -346,7 +355,7 @@ Se arriva nuovo task da Notion:
 
 ## 6. Components
 
-### 6.1 Bridge (`index.mjs`, `bridge-v3.mjs`, `bridge-v2.cjs`)
+### 6.1 Bridge (`index.mjs`)
 - **Polling**: offset-based `getUpdates` with 30s timeout, 300ms interval between polls
 - **Rate limiting**: Telegram Bot API — no explicit rate limiter, relies on polling interval
 - **Message splitting**: chunks at 4000 chars, breaks at last `\n` boundary
@@ -357,7 +366,7 @@ Se arriva nuovo task da Notion:
 ### 6.2 Durable State (`src/core/durable-state.mjs`)
 - **File**: `.hydra/loop-checkpoint.json`
 - **Atomic writes**: write to `*.tmp{timestamp}` → `renameSync` → delete backup
-- **Schema**: `{ version, phase, lastPhase, currentTaskId, currentStory, attempt, maxAttempts, previousError, eventId, costAccumulatorUsd, storiesCompletedToday }`
+- **Schema**: `{ version, projectPath, phase, lastPhase, currentTaskId, currentStory, attempt, maxAttempts, previousError, humanGateReason, humanGateResolvedAt, eventId, startedAt, updatedAt, costAccumulatorUsd, storiesCompletedToday }`
 - **Transition**: `transition(newPhase, extraFields)` — sets `lastPhase`, increments `eventId`, merges extra, saves
 
 ### 6.3 Task Manager (`src/core/task-manager.mjs`)
@@ -380,7 +389,7 @@ Se arriva nuovo task da Notion:
   - `message.updated` → token/cost tracking + completion detection
   - `question.asked` / `permission.asked` → human gate required
   - `session.error` / `session.status.type=retry` → stagnation tracking
-- **System prompts**: 6 agent types (builder, bug-hunter, innovator, orchestrator, project-planner, task-planner) — ognuno con prompt SDD dedicato
+- **System prompts**: 12 agent types (builder, bug-hunter, innovator, orchestrator, project-planner, task-planner, patcher, skill-extractor, summarizer, architect, reviewer, visual-reviewer) — ognuno con prompt SDD o di supporto dedicato
 - **Context injection**: per ogni agente, legge prd.json, progress.txt, bugs.md, ideas.md, AGENTS.md, git log
 - **Stagnation**: same error fingerprint ≥3 times → emit `stagnation` event
 - **Poll fallback**: polls `GET /session/{id}/message` every 3s as SSE backup
@@ -428,7 +437,7 @@ Se arriva nuovo task da Notion:
 ## 7. Sub-Agent Runner System
 
 ### `agents/runner.mjs` — Fresh Session Runner
-Used by both `bridge-v3.mjs` `/loop agent` command and `agents/loop.mjs`.
+Used by both stand-alone CLI runner and orchestrator loop.
 
 | Agent Type | Role | SDD Artifacts |
 |------------|------|---------------|
@@ -438,6 +447,12 @@ Used by both `bridge-v3.mjs` `/loop agent` command and `agents/loop.mjs`.
 | `orchestrator` | Maintains `prd.json`: merges bugs/ideas into stories, deduplicates, reorders by priority | prd.json |
 | `project-planner` | SDD project planner (new projects): scrive CONSTITUTION, PRODUCT-SPEC, TECHNICAL-SPEC, PLAN.md, prd.json. Crea task breakdown da init a MVP. | CONSTITUTION, PRODUCT-SPEC, TECHNICAL-SPEC, PLAN.md, prd.json |
 | `task-planner` | Per-task spec generation: legge SDD artifacts, scrive test stub che codificano AC, aggiorna PLAN.md | Test files, PLAN.md |
+| `patcher` | Genera diff unificate (patches) a partire dai messaggi di errore per correggere i test o i crash di QA | diff blocks |
+| `skill-extractor` | Analizza i git diff per estrarre regole e pattern generici e salvarli in `.hydra/skills/` | skill-*.md |
+| `summarizer` | Compattazione semantica: riassume lo stream di eventi quando supera i 50MB | event-stream summary |
+| `architect` | Produce proposte architetturali per i nuovi task (fase SWARM) | Consensus document |
+| `reviewer` | Valuta le proposte dell'Architect sulla sicurezza, scalabilità e standard (fase SWARM) | Review consensus |
+| `visual-reviewer` | Analizza il layout dell'interfaccia a partire da screenshot Puppeteer (fase VISUAL_QA) | Visual approval |
 
 Each invocation creates a **fresh OpenCode session** (no chat history), injects full file context (SDD artifacts, git log, package.json, progress.txt, bugs.md, ideas.md, AGENTS.md), and runs until completion or timeout.
 
@@ -446,20 +461,17 @@ Each invocation creates a **fresh OpenCode session** (no chat history), injects 
 ```
 agent-runtime.mjs (used by hydra-loop):
   systemParts = {
-    builder:          SDD builder prompt (test-first)
-    bug-hunter:       Fresh analysis prompt
-    innovator:        Fresh ideation prompt
-    orchestrator:     PRD maintenance prompt
-    project-planner:  SDD new project planner
-    task-planner:     SDD per-task planner
+    builder, bug-hunter, innovator, orchestrator, project-planner,
+    task-planner, patcher, skill-extractor, summarizer, architect,
+    reviewer, visual-reviewer
   }
   → system = systemParts[this.agentType] || systemParts.builder
   → context injection: prd.json, progress.txt, bugs.md, ideas.md, AGENTS.md, git log
 
-runner.mjs (used standalone or by legacy loop):
+runner.mjs (used standalone):
   AGENTS = {
     builder, bug-hunter, innovator, orchestrator,
-    project-planner, task-planner
+    project-planner, task-planner, architect, reviewer, visual-reviewer
   }
   → buildGenericPrompt() or buildBuilderPrompt()
   → same context injection pattern
@@ -473,9 +485,6 @@ Key architectural patterns:
 - **New Project Discovery**: `_syncNewProjectsFromNotion()` — confronta pageId Notion con root prd.json, crea dir + git + stubs
 - **Task Assignment**: `_assignPendingTasksToProjects()` — setta `_projectSlug` per task Notion non assegnati
 - **SDD Gate**: `phasePLAN()` controlla esistenza artefatti SDD prima di eseguire task-planner
-
-### `agents/loop.mjs` — Legacy Ralph Loop
-Older loop implementation. Uses `spawnSync` to run `runner.mjs` for each agent. Simpler state management (no durable checkpoint). Still functional but being superseded by hydra-loop.
 
 ## 8. OpenCode API Endpoints Used
 
@@ -500,16 +509,32 @@ Older loop implementation. Uses `spawnSync` to run `runner.mjs` for each agent. 
 | `NOTION_DATABASE_ID` | For DB mode | — | Notion database ID |
 | `NOTION_PAGE_ID` | For page mode | — | Notion page ID (falls back to db id) |
 | `OPENCODE_PORT` | No | `4096` | Port for opencode serve |
+| `HEALTH_PORT` | No | `9090` | Port for the loop health server |
 | `BRIDGE_MODE` | No | `api` | `api` (opencode serve) or `cli` (opencode run) |
 | `SESSION_TIMEOUT_MINUTES` | No | `1440` | Session idle timeout (0 = ∞) |
 | `STALL_TIMEOUT_MINUTES` | No | `30` | Alert if no SSE events (0 = off) |
-| `OPENCODE_DEFAULT_PROJECT` | No | `neo` | Default project key |
+| `OPENCODE_DEFAULT_PROJECT` | No | `bridge` | Default project key |
 | `OPENCODE_DEFAULT_MODEL` | No | `opencode big pickle` | Default model |
 | `LOOP_DAILY_COST_LIMIT` | No | `10` | Max daily cost in USD |
 | `LOOP_MAX_CYCLE_MINUTES` | No | `30` | Max agent runtime per task |
 | `LOOP_MAX_CYCLE_MS` | No | — | Override cycle timeout in ms |
 | `LOOP_MAX_ATTEMPTS` | No | `3` | Retry count before BLOCKED |
 | `HYDRA_CHAT_ID` | No | — | Telegram chat ID for loop status |
+| `OPENAI_API_KEY` | No | — | API key for OpenAI models |
+| `OPENROUTER_API_KEY` | No | — | API key for OpenRouter models |
+| `NVIDIA_API_KEY` | No | — | API key for NVIDIA models |
+| `GROQ_API_KEY` | No | — | API key for Groq models |
+| `MISTRAL_API_KEY` | No | — | API key for Mistral models |
+| `CEREBRAS_API_KEY` | No | — | API key for Cerebras models |
+| `KILOCODE_API_KEY` | No | — | API key for Kilocode models |
+| `GEMINI_API_KEY` | No | — | API key for Google Gemini models |
+| `XAI_API_KEY` | No | — | API key for xAI models |
+| `CLOUDFLARE_ACCOUNT_ID` | No | — | Cloudflare Account ID |
+| `CLOUDFLARE_API_TOKEN` | No | — | Cloudflare API Token |
+| `MODAL_TOKEN_ID` | No | — | Modal Token ID |
+| `MODAL_TOKEN_SECRET` | No | — | Modal Token Secret |
+| `MODAL_WORKSPACE_TOKEN` | No | — | Modal Workspace Token |
+| `OLLAMA_API_KEY` | No | — | API key for Ollama models |
 
 ## 10. Anti-Patterns We Avoid
 
@@ -586,15 +611,6 @@ index.mjs (entry)
 ├── spawns → opencode serve
 ├── imports → PROJECTS (projects.mjs)
 ├── imports → MemoryManager
-├── spawns → agents/hydra-loop.mjs
-│   └── imports → src/core/* (all)
-└── spawns → agents/runner.mjs (via /loop agent command)
-
-bridge-v3.mjs (standalone alternative)
-├── spawns → opencode serve
-└── same pattern as index.mjs (no wizard, no loop control)
-
-bridge-v2.cjs (legacy)
-├── calls → opencode run CLI
-└── standalone (no core imports)
+└── spawns → agents/orchestrator/index.mjs
+    └── imports → src/core/* (all)
 ```

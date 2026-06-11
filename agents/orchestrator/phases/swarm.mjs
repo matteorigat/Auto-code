@@ -43,7 +43,7 @@ export async function handleSwarm(context) {
 
     // 3. Save Consensus
     const consensus = `# Swarm Consensus\n\n## Architect Proposal\n${proposal}\n\n## Reviewer Feedback\n${review}`;
-    const consensusPath = join(ws, ".hydra-swarm-consensus.md");
+    const consensusPath = join(ws, ".hydra", "swarm-consensus.md");
     writeFileSync(consensusPath, consensus);
     
     log(`[SWARM] [${task.id}] — Consensus saved.`);

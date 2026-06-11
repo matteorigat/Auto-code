@@ -26,6 +26,12 @@ export async function handleExec(context) {
       const ws = task.workspacePath || projectPath;
       updateStatus({ phase: "EXEC", taskTitle: task.title, taskId: task.id });
       
+      // Update state checkpoint with current task details during execution
+      state.transition("EXEC", {
+        currentTaskId: task.id,
+        currentStory: task.title
+      });
+
       log(`[EXEC] [${task.id}] — Starting Isolated Worker Process`);
 
       const workerPath = join(__dirname, "../../workers/builder-worker.mjs");
@@ -79,15 +85,40 @@ export async function handleExec(context) {
       log(`[EXEC] ${failed.length} tasks failed in parallel mode.`);
       stream.emit("System", "system", { action: "PhaseChange", phase: "IDLE" });
     } else {
-      stream.emit("System", "system", { action: "PhaseChange", phase: "QA", stateUpdates: { qaTaskIds: execTaskIds } });
+      stream.emit("System", "system", { 
+        action: "PhaseChange", 
+        phase: "QA", 
+        stateUpdates: { 
+          qaTaskIds: execTaskIds,
+          currentTaskId: execTaskIds[0],
+          currentStory: tasksToRun[0]?.title || "Multiple tasks"
+        } 
+      });
     }
   } else {
     // Sequential fallback
     const res = await runTask(tasksToRun[0]);
     if (res.success) {
-      stream.emit("System", "system", { action: "PhaseChange", phase: "QA", stateUpdates: { qaTaskIds: [tasksToRun[0].id] } });
+      stream.emit("System", "system", { 
+        action: "PhaseChange", 
+        phase: "QA", 
+        stateUpdates: { 
+          qaTaskIds: [tasksToRun[0].id],
+          currentTaskId: tasksToRun[0].id,
+          currentStory: tasksToRun[0].title
+        } 
+      });
     } else {
-      stream.emit("System", "system", { action: "PhaseChange", phase: "FIX", stateUpdates: { previousError: res.error, fixTaskId: tasksToRun[0].id } });
+      stream.emit("System", "system", { 
+        action: "PhaseChange", 
+        phase: "FIX", 
+        stateUpdates: { 
+          previousError: res.error, 
+          fixTaskId: tasksToRun[0].id,
+          currentTaskId: tasksToRun[0].id,
+          currentStory: tasksToRun[0].title
+        } 
+      });
     }
   }
 }

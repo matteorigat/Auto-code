@@ -79,7 +79,9 @@ async function main() {
   const { handleCommit } = await import("./phases/commit.mjs");
   const { handleReflect } = await import("./phases/reflect.mjs");
   const { handleDiscover } = await import("./phases/discover.mjs");
-
+  const { handleSync } = await import("./phases/sync.mjs");
+  const { handleWaitHuman } = await import("./phases/wait-human.mjs");
+ 
   // Event Driven state machine
   stream.on("System", async (event) => {
     if (event.payload?.action === "PhaseChange") {
@@ -98,10 +100,10 @@ async function main() {
           case "SWARM": await handleSwarm(context); break;
           case "COMMIT": await handleCommit(context); break;
           case "REFLECT": await handleReflect(context); break;
+          case "SYNC": await handleSync(context); break;
           case "DISCOVER": await handleDiscover(context); break;
           case "WAIT_HUMAN":
-            context.log("[WAIT_HUMAN] Pausing execution and waiting for resume...");
-            // Non fa nulla, aspetta evento esterno
+            await handleWaitHuman(context);
             break;
           default:
             context.log(`Unknown phase: ${nextPhase}`);

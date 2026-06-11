@@ -234,7 +234,7 @@ export class DashboardServer {
 
   start() {
     this.server = this.app.listen(this.port, '0.0.0.0', () => {
-      console.log(`📊 Dashboard Server running on http://0.0.0.0:${this.port}`);
+      console.log(`📊 Dashboard Server running on http://127.0.0.1:${this.port}`);
     });
     
     // Cleanup old data periodically

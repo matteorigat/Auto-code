@@ -19,6 +19,15 @@ export class TelegramBot {
   }
 
   async callApi(method, payload = {}) {
+    if (method === "getUpdates") {
+      const res = await fetch(`${this.apiBase}/${method}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+      });
+      return await res.json();
+    }
+
     const key = this._idempotencyKey(method, payload);
     const cached = this._idempotencyCache.get(key);
     if (cached && Date.now() - cached.ts < 5000) return cached.result;

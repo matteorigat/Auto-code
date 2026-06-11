@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 
 // Load .env
 try {
@@ -66,7 +66,12 @@ const bot = new TelegramBot(TOKEN, statePath, ALLOWED_USERS);
 
 import { spawn } from "node:child_process";
 
+let restartCount = 0;
+let lastRestartTime = 0;
+
 const loopManager = {
+  currentProjectPath: null,
+  shouldBeRunning: false,
   startLoop: async (chatId, projectKey) => {
     try {
       const projName = projectKey || "loop";
@@ -74,6 +79,14 @@ const loopManager = {
         ? (PROJECTS[projectKey]?.path || join(process.env.HOME || "/home/ubuntu", "projects", projectKey))
         : join(process.env.HOME || "/home/ubuntu", "projects", "loop");
         
+      if (!existsSync(projPath)) {
+        await bot.send(chatId, `❌ Errore: la directory del progetto non esiste: \`${projPath}\``);
+        return;
+      }
+
+      loopManager.currentProjectPath = projPath;
+      loopManager.shouldBeRunning = true;
+
       const loopScript = join(bridgePath, "agents/orchestrator/index.mjs");
       
       const child = spawn("node", [loopScript, projPath], {
@@ -85,6 +98,30 @@ const loopManager = {
       
       child.stdout.on("data", d => console.log("[loop]", d.toString().trim()));
       child.stderr.on("data", d => console.error("[loop]", d.toString().trim()));
+      
+      child.on("exit", async (code, signal) => {
+        console.log(`[loop] Orchestrator exited with code ${code} and signal ${signal}`);
+        orchestratorIpcManager.childProc = null;
+        if (loopManager.shouldBeRunning) {
+          const now = Date.now();
+          if (now - lastRestartTime > 60000) {
+            restartCount = 0; // Reset count after 1 minute of stable execution
+          }
+          if (restartCount < 5) {
+            restartCount++;
+            lastRestartTime = now;
+            await bot.send(chatId, `⚠️ *Alert:* L'orchestratore Loop è terminato inaspettatamente (codice ${code}). Tentativo di riavvio ${restartCount}/5...`);
+            setTimeout(() => {
+              loopManager.startLoop(chatId, projectKey);
+            }, 5000);
+          } else {
+            loopManager.shouldBeRunning = false;
+            await bot.send(chatId, `🚨 *Errore Critico:* L'orchestratore Loop è terminato troppe volte consecutivamente. Riavvio automatico disabilitato.`);
+          }
+        } else {
+          await bot.send(chatId, `ℹ️ L'orchestratore Loop è terminato normalmente.`);
+        }
+      });
       
       await bot.send(chatId, `✅ Hydra Loop avviato su \`${projName}\`.`);
     } catch (e) {
@@ -123,6 +160,26 @@ async function handleMessage(msg) {
   const [cmd, ...rest] = text.split(/\\s+/);
   const args = rest.join(" ");
 
+  if (cmd === "/resume" || (cmd === "/loop" && args === "resume")) {
+    const currentProjectPath = loopManager.currentProjectPath || join(process.env.HOME || "/home/ubuntu", "projects", "loop");
+    if (!orchestratorIpcManager.childProc) {
+      await bot.send(chatId, "▶️ L'orchestratore non è in esecuzione. Lo avvio...");
+      loopManager.startLoop(chatId, st.project || null);
+      return;
+    }
+
+    const { existsSync, mkdirSync, writeFileSync } = await import("node:fs");
+    const signalPath = join(currentProjectPath, ".hydra", "resume-signal.json");
+    try {
+      const dir = dirname(signalPath);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(signalPath, JSON.stringify({ action: "resume" }), "utf-8");
+      return bot.send(chatId, "▶️ Invio segnale di ripresa al Loop...");
+    } catch (e) {
+      return bot.send(chatId, `❌ Errore durante la ripresa: ${e.message}`);
+    }
+  }
+
   if (cmd === "/new") {
     wizard.startWizard(st);
     return bot.send(chatId, "🆕 *Nuovo avvio*\\n\\n1️⃣ Loop\\n2️⃣ Chat\\n3️⃣ Crea progetto");
@@ -156,14 +213,67 @@ async function handleMessage(msg) {
   }
 }
 
+const offsetPath = join(bridgePath, ".hydra", "telegram-offset.json");
 let offset = 0;
+try {
+  if (existsSync(offsetPath)) {
+    offset = JSON.parse(readFileSync(offsetPath, "utf-8")).offset || 0;
+  }
+} catch (e) {
+  console.error("Error loading Telegram offset:", e.message);
+}
+
+function saveOffset(newOffset) {
+  offset = newOffset;
+  try {
+    const dir = dirname(offsetPath);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(offsetPath, JSON.stringify({ offset: newOffset }), "utf-8");
+  } catch (e) {
+    console.error("Error saving Telegram offset:", e.message);
+  }
+}
+
 async function poll() {
   try {
-      const data = await bot.callApi("getUpdates", { offset, timeout: 30, allowed_updates: ["message"] });
+      const data = await bot.callApi("getUpdates", { offset, timeout: 30, allowed_updates: ["message", "callback_query"] });
       if (data.ok && data.result) {
           for (const upd of data.result) {
-              offset = upd.update_id + 1;
-              if (upd.message) await handleMessage(upd.message).catch(e => console.error(e));
+              saveOffset(upd.update_id + 1);
+              if (upd.message) {
+                  await handleMessage(upd.message).catch(e => console.error(e));
+              } else if (upd.callback_query) {
+                  const cb = upd.callback_query;
+                  const data = cb.data;
+                  const chatId = cb.message?.chat.id;
+                  const userId = cb.from?.id;
+                  
+                  if (!userId || !ALLOWED_USERS.includes(userId)) {
+                      await bot.send(chatId, "⛔ Non autorizzato.");
+                      await bot.callApi("answerCallbackQuery", { callback_query_id: cb.id }).catch(() => {});
+                      continue;
+                  }
+
+                  if (data === "hydra:resume" || data.startsWith("hydra:approve:") || data.startsWith("hydra:reject:")) {
+                      const currentProjectPath = loopManager.currentProjectPath || join(process.env.HOME || "/home/ubuntu", "projects", "loop");
+                      
+                      if (!orchestratorIpcManager.childProc) {
+                          await bot.send(chatId, "▶️ L'orchestratore non è in esecuzione. Lo avvio...");
+                          loopManager.startLoop(chatId, null);
+                      } else {
+                          const signalPath = join(currentProjectPath, ".hydra", "resume-signal.json");
+                          try {
+                              const dir = dirname(signalPath);
+                              if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+                              writeFileSync(signalPath, JSON.stringify({ action: "resume", data }), "utf-8");
+                              await bot.send(chatId, "▶️ Invio segnale di ripresa al Loop...");
+                          } catch (e) {
+                              await bot.send(chatId, `❌ Errore durante la ripresa: ${e.message}`);
+                          }
+                      }
+                  }
+                  await bot.callApi("answerCallbackQuery", { callback_query_id: cb.id }).catch(() => {});
+              }
           }
       }
   } catch (err) {
@@ -175,7 +285,7 @@ async function poll() {
 console.log("Starting modular bridge...");
 processManager.startLiteLLM();
 processManager.startOpencode();
-processManager.startHealthServer();
+processManager.startHealthServer(() => orchestratorIpcManager.childProc);
 
 setTimeout(() => {
   if (processManager.healthOk) {

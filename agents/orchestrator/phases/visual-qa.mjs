@@ -21,6 +21,12 @@ export async function handleVisualQa(context) {
 
     const ws = task.workspacePath || projectPath;
     updateStatus({ phase: "VISUAL_QA", taskTitle: task.title, taskId: task.id });
+
+    // Update state checkpoint with current task details during Visual QA
+    state.transition("VISUAL_QA", {
+      currentTaskId: task.id,
+      currentStory: task.title
+    });
     
     log(`[VISUAL_QA] Attempting to screenshot UI for ${taskId}`);
     
@@ -77,6 +83,6 @@ export async function handleVisualQa(context) {
   }
 
   if (allPassed) {
-    stream.emit("System", "system", { action: "PhaseChange", phase: "IDLE" });
+    stream.emit("System", "system", { action: "PhaseChange", phase: "COMMIT" });
   }
 }

@@ -34,9 +34,32 @@ export async function handleFix(context) {
   const content = res.content || res.result?.info?.content || "";
   
   // 4.4 Apply Unified Diff Patch
-  const diffMatch = content.match(/```diff\\n([\\s\\S]*?)```/);
+  const diffMatch = content.match(/```diff\n([\s\S]*?)```/);
   if (diffMatch && diffMatch[1]) {
     const patchContent = diffMatch[1];
+    
+    // Path traversal check
+    const { resolve, normalize } = await import("node:path");
+    const lines = patchContent.split("\n");
+    const resolvedWs = resolve(ws);
+    for (const line of lines) {
+      if (line.startsWith("--- ") || line.startsWith("+++ ")) {
+        const filePartRaw = line.substring(4).split("\t")[0].trim();
+        const parts = filePartRaw.split(/\s+/);
+        let filePart = parts[0];
+        if (filePart === "/dev/null") continue;
+        if (filePart.startsWith("a/") || filePart.startsWith("b/")) {
+          filePart = filePart.slice(2);
+        }
+        const resolvedPath = resolve(ws, normalize(filePart));
+        if (!resolvedPath.startsWith(resolvedWs)) {
+          log(`[FIX] SECURITY WARNING: Patch contains path traversal attempt to ${filePart}. Aborting.`);
+          stream.emit("System", "system", { action: "PhaseChange", phase: "IDLE", stateUpdates: { previousError: "Path traversal detected in patch" } });
+          return;
+        }
+      }
+    }
+
     log(`[FIX] Applying generated patch...`);
     const patchFile = join(ws, ".hydra-temp.patch");
     writeFileSync(patchFile, patchContent);

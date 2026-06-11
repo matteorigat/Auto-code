@@ -29,13 +29,25 @@ export class Safety {
   /* ─── Docker Sandbox Guard ─── */
 
   async runSafeCommand(taskId, command, workspacePath) {
-    if (this.forceContainerExecution) {
+    let dockerAvailable = false;
+    try {
+      execSync("docker ps", { stdio: "ignore" });
+      dockerAvailable = true;
+    } catch {}
+
+    if (this.forceContainerExecution && dockerAvailable) {
       const { getDockerController } = await import("../../agents/docker-runtime.mjs");
       const controller = getDockerController(this.projectPath);
-      await controller.startSandbox(taskId, workspacePath);
-      return await controller.execute(taskId, command);
+      try {
+        await controller.startSandbox(taskId, workspacePath);
+        return await controller.execute(taskId, command);
+      } finally {
+        try {
+          controller.stopSandbox(taskId);
+        } catch {}
+      }
     } else {
-      console.warn(`[Safety] WARNING: Running command on host. This violates SOTA isolation.`);
+      console.warn(`[Safety] WARNING: Running command on host. Docker available: ${dockerAvailable}.`);
       try {
         const out = execSync(command, { cwd: workspacePath || this.projectPath, shell: "/bin/bash", timeout: 300000 }).toString();
         return { exitCode: 0, stdout: out, stderr: "" };

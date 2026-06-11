@@ -42,8 +42,10 @@ export async function handleCommit(context) {
     }
   }
 
+  const currentToday = (state.get().storiesCompletedToday || 0) + 1;
   stream.emit("System", "system", { 
     action: "PhaseChange", 
-    phase: "REFLECT"
+    phase: "REFLECT",
+    stateUpdates: { storiesCompletedToday: currentToday }
   });
 }

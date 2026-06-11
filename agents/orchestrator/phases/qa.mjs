@@ -1,4 +1,6 @@
 import { QualityGate } from "../../../src/core/quality-gate.mjs";
+import { existsSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 
 export async function handleQa(context) {
   const { tasks, stream, log, updateStatus, projectPath, state } = context;
@@ -21,6 +23,23 @@ export async function handleQa(context) {
 
     const ws = task.workspacePath || projectPath;
     updateStatus({ phase: "QA", taskTitle: task.title, taskId: task.id });
+
+    // Update state checkpoint with current task details during QA
+    state.transition("QA", {
+      currentTaskId: task.id,
+      currentStory: task.title
+    });
+    
+    // Clean up swarm-consensus.md if it exists
+    const consensusPath = join(ws, ".hydra", "swarm-consensus.md");
+    try {
+      if (existsSync(consensusPath)) {
+        unlinkSync(consensusPath);
+        log(`[QA] Cleaned up swarm-consensus.md in ${ws}`);
+      }
+    } catch (e) {
+      log(`[QA] Failed to clean up swarm-consensus.md: ${e.message}`);
+    }
     
     log(`[QA] Running gates for ${taskId} inside Docker sandbox`);
     

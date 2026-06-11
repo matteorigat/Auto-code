@@ -13,6 +13,7 @@ import { EventEmitter } from "node:events";
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { systemPrompts } from "../src/prompts/system-prompts.mjs";
+import { getDockerController } from "./docker-runtime.mjs";
 
 const OC_URL = process.env.OC_URL || "http://127.0.0.1:4096";
 const DEFAULT_TIMEOUT_MS = 900_000; // 15 min per story
@@ -86,7 +87,6 @@ export class AgentRuntime extends EventEmitter {
 
   async _getOcUrl() {
     try {
-      const { getDockerController } = await import("./docker-runtime.mjs");
       const controller = getDockerController(this.projectPath);
       // Ensure sandbox is started. Since AgentRuntime creates a new session per task, 
       // we can map the sandbox using the taskId (or sessionId if taskId is missing).
@@ -622,6 +622,14 @@ export class AgentRuntime extends EventEmitter {
     if (this.sseController) {
       this.sseController.abort();
       this.sseController = null;
+    }
+    if (this.task && this.task.id) {
+      try {
+        const controller = getDockerController(this.projectPath);
+        controller.stopSandbox(this.task.id);
+      } catch (e) {
+        // Ignore
+      }
     }
   }
 

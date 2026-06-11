@@ -13,6 +13,16 @@ export class DockerSandboxController {
     this.imageName = "hydra-sandbox:latest";
     this.containers = new Map(); // taskId -> containerId
     this._ensureImage();
+
+    // Register shutdown hooks to clean up active containers
+    const cleanExit = () => {
+      for (const [taskId] of this.containers) {
+        this.stopSandbox(taskId);
+      }
+    };
+    process.on('exit', cleanExit);
+    process.on('SIGINT', () => { cleanExit(); process.exit(130); });
+    process.on('SIGTERM', () => { cleanExit(); process.exit(143); });
   }
 
   /**
@@ -46,6 +56,7 @@ export class DockerSandboxController {
     }
 
     const containerName = `hydra-sandbox-${taskId}-${Date.now()}`;
+    const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
     
     // Start container in detached mode, mounting the workspace and opencode binary
     const cmd = [
@@ -57,6 +68,7 @@ export class DockerSandboxController {
       "-v", `/home/ubuntu/.opencode:/opt/opencode:ro`,
       "-v", `/home/ubuntu/.opencode-config:/home/hydra/.opencode-config`, // if needed
       "-e", `PATH=/opt/opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
+      "-e", `SANDBOX_TOKEN=${token}`,
       this.imageName,
       "node", "/runtime/server.js"
     ];
@@ -71,7 +83,8 @@ export class DockerSandboxController {
     this.containers.set(taskId, {
       id: containerId,
       name: containerName,
-      ip: ipOut
+      ip: ipOut,
+      token: token
     });
 
     // Wait for the Opencode HTTP server to spin up
@@ -115,7 +128,10 @@ export class DockerSandboxController {
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${container.token}`
+        },
         body: JSON.stringify({ command, timeoutMs })
       });
 
@@ -136,12 +152,12 @@ export class DockerSandboxController {
   }
 }
 
-// Global singleton instance for the controller
-let controllerInstance = null;
+// Global cache for project controllers
+const instances = new Map();
 
 export function getDockerController(projectPath) {
-  if (!controllerInstance) {
-    controllerInstance = new DockerSandboxController(projectPath);
+  if (!instances.has(projectPath)) {
+    instances.set(projectPath, new DockerSandboxController(projectPath));
   }
-  return controllerInstance;
+  return instances.get(projectPath);
 }

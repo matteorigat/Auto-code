@@ -26,43 +26,80 @@ export class QualityGate {
     let passed = true;
     const workDir = cwd || this.projectPath;
 
-    const { getDockerController } = await import("../../agents/docker-runtime.mjs");
-    const dockerController = getDockerController(this.projectPath);
+    const execTaskId = taskId || `qa-${Date.now()}`;
+    let dockerAvailable = false;
+    let dockerController;
 
-    for (const c of checks) {
-      let cmd = c.cmd;
-      if (appPort) {
-        cmd = cmd.replace(/\$\{APP_PORT\}/g, String(appPort));
-      }
-      
-      let output = "";
-      let exitCode = 0;
-      
+    try {
+      execSync("docker ps", { stdio: "ignore" });
+      dockerAvailable = true;
+      const { getDockerController } = await import("../../agents/docker-runtime.mjs");
+      dockerController = getDockerController(this.projectPath);
+    } catch (e) {
+      console.warn("⚠️ Docker non disponibile, fallback all'esecuzione locale diretta.");
+    }
+
+    if (dockerAvailable && dockerController) {
       try {
-        // Fallback to a temporary generic taskId if none provided
-        const execTaskId = taskId || `qa-${Date.now()}`;
-        
-        // Ensure sandbox is started
         await dockerController.startSandbox(execTaskId, workDir);
-        
-        const result = await dockerController.execute(execTaskId, cmd, (c.timeout || 60) * 1000);
-        exitCode = result.exitCode;
-        output = (result.stdout || "") + "\n" + (result.stderr || "");
       } catch (e) {
-        exitCode = 1;
-        output = e.message || "Failed to execute in sandbox";
+        console.warn("⚠️ Impossibile avviare il sandbox Docker, fallback all'esecuzione locale diretta.");
+        dockerAvailable = false;
       }
+    }
 
-      const ok = exitCode === 0;
-      if (!ok && c.required) passed = false;
+    try {
+      for (const c of checks) {
+        let cmd = c.cmd;
+        if (appPort) {
+          cmd = cmd.replace(/\$\{APP_PORT\}/g, String(appPort));
+        }
+        
+        let output = "";
+        let exitCode = 0;
+        
+        if (dockerAvailable && dockerController) {
+          try {
+            const result = await dockerController.execute(execTaskId, cmd, (c.timeout || 60) * 1000);
+            exitCode = result.exitCode;
+            output = (result.stdout || "") + "\n" + (result.stderr || "");
+          } catch (e) {
+            exitCode = 1;
+            output = e.message || "Failed to execute in sandbox";
+          }
+        } else {
+          try {
+            output = execSync(cmd, {
+              cwd: workDir,
+              timeout: (c.timeout || 60) * 1000,
+              env: { ...process.env }
+            }).toString();
+            exitCode = 0;
+          } catch (e) {
+            exitCode = e.status ?? 1;
+            output = (e.stdout || "").toString() + "\n" + (e.stderr || "").toString();
+          }
+        }
 
-      results.push({
-        name: c.name,
-        passed: ok,
-        required: c.required,
-        output: output.slice(0, 2000),
-        exitCode,
-      });
+        const ok = exitCode === 0;
+        if (!ok && c.required) passed = false;
+
+        results.push({
+          name: c.name,
+          passed: ok,
+          required: c.required,
+          output: output.slice(0, 2000),
+          exitCode,
+        });
+      }
+    } finally {
+      if (dockerAvailable && dockerController) {
+        try {
+          dockerController.stopSandbox(execTaskId);
+        } catch (e) {
+          console.error(`[QualityGate] Failed to stop sandbox ${execTaskId}:`, e.message);
+        }
+      }
     }
 
     return { passed, results };
@@ -119,7 +156,7 @@ export class QualityGate {
       checks.push({ name: "lint", cmd: "python -m flake8 .", timeout: 60, required: false });
     }
 
-    return checks.length > 0 ? checks : this.defaultChecks;
+    return checks.length > 0 ? checks : (existsSync(pkgPath) ? [] : this.defaultChecks);
   }
 }
 

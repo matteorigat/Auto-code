@@ -21,8 +21,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Setup a non-root user for safe execution
-RUN useradd -m -s /bin/bash hydra \
-    && echo "hydra ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+RUN useradd -m -s /bin/bash hydra
 
 WORKDIR /workspace
 
@@ -35,11 +34,37 @@ const { exec } = require('child_process');
 
 const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/execute') {
+    const authHeader = req.headers['authorization'];
+    const expectedToken = process.env.SANDBOX_TOKEN;
+    if (!expectedToken || authHeader !== `Bearer ${expectedToken}`) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+
     let body = '';
     req.on('data', chunk => { body += chunk.toString(); });
     req.on('end', () => {
       try {
         const { command, timeoutMs = 300000 } = JSON.parse(body);
+        if (typeof command !== 'string' || !command.trim()) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Command must be a non-empty string' }));
+          return;
+        }
+
+        // Validate command safety
+        if (command.length > 4096) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Command too long' }));
+          return;
+        }
+        if (command.includes('sudo ') || command.includes('sudo\t') || command.includes('..')) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unsafe command execution rejected' }));
+          return;
+        }
+
         exec(command, { shell: '/bin/bash', timeout: timeoutMs, cwd: '/workspace' }, (error, stdout, stderr) => {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
@@ -49,7 +74,7 @@ const server = http.createServer((req, res) => {
           }));
         });
       } catch (e) {
-        res.writeHead(400);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid payload' }));
       }
     });

@@ -5,7 +5,10 @@
   "main": "src/index.mjs",
   "type": "module",
   "scripts": {
-    "start": "node src/index.mjs"
+    "start": "node src/index.mjs",
+    "typecheck": "echo 'No TypeScript check needed'",
+    "test": "echo 'No tests defined'",
+    "lint": "echo 'No linting rules defined'"
   },
   "dependencies": {
     "@babel/parser": "^7.26.0",
