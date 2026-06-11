@@ -24,6 +24,19 @@ export class TaskManager {
     writeFileSync(this.prdPath, JSON.stringify(prd, null, 2));
   }
 
+  /* ─── Execution Mode ─── */
+
+  getExecutionMode() {
+    try {
+      const modePath = join(this.projectPath, ".hydra", "execution-mode.json");
+      if (existsSync(modePath)) {
+        const data = JSON.parse(readFileSync(modePath, "utf-8"));
+        return data.mode || "sequential";
+      }
+    } catch {}
+    return "sequential";
+  }
+
   /* ─── Source merge ─── */
 
   async loadTasks() {
@@ -176,10 +189,29 @@ export class TaskManager {
   /* ─── CRUD helpers ─── */
 
   getNextPending() {
-    const pending = this._tasks.filter(s => !s.passes && s.status !== "blocked");
-    if (!pending.length) return null;
-    pending.sort((a, b) => (a.priority || 3) - (b.priority || 3));
-    return pending[0];
+    const ready = this.getReadyTasks("sequential");
+    return ready.length ? ready[0] : null;
+  }
+
+  getReadyTasks(mode = "sequential") {
+    // A task is ready if it's not passed, not blocked
+    // and ALL its dependencies are already passes: true
+    const isReady = (task) => {
+      if (task.passes || task.status === "blocked") return false;
+      if (!task._deps || task._deps.length === 0) return true;
+      return task._deps.every(depId => {
+        const depTask = this._tasks.find(t => String(t.id) === String(depId));
+        return depTask ? depTask.passes : true;
+      });
+    };
+
+    const readyTasks = this._tasks.filter(isReady);
+    readyTasks.sort((a, b) => (a.priority || 3) - (b.priority || 3));
+    
+    if (mode === "parallel") {
+      return readyTasks;
+    }
+    return readyTasks.length ? [readyTasks[0]] : [];
   }
 
   markPass(storyId) {

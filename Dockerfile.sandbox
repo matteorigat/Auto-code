@@ -1,0 +1,74 @@
+FROM ubuntu:22.04
+
+# Avoid prompts from apt
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install core dependencies: Node.js, Python3, Go, git, curl, build-essential
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    python3 \
+    python3-pip \
+    python3-venv \
+    golang-go \
+    build-essential \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Setup a non-root user for safe execution
+RUN useradd -m -s /bin/bash hydra \
+    && echo "hydra ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+WORKDIR /workspace
+
+# Create the Runtime Client micro-server (Node.js)
+# This server listens on port 5000 and executes bash commands, returning stdout/stderr
+RUN mkdir -p /runtime
+COPY <<-'EOF' /runtime/server.js
+const http = require('http');
+const { exec } = require('child_process');
+
+const server = http.createServer((req, res) => {
+  if (req.method === 'POST' && req.url === '/execute') {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const { command, timeoutMs = 300000 } = JSON.parse(body);
+        exec(command, { shell: '/bin/bash', timeout: timeoutMs, cwd: '/workspace' }, (error, stdout, stderr) => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            exitCode: error ? (error.code || 1) : 0,
+            stdout: stdout || '',
+            stderr: stderr || (error ? error.message : '')
+          }));
+        });
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: 'Invalid payload' }));
+      }
+    });
+  } else {
+    res.writeHead(404);
+    res.end('Not Found');
+  }
+});
+
+server.listen(5000, '0.0.0.0', () => {
+  console.log('Runtime Client HTTP server listening on port 5000');
+});
+EOF
+
+# Ensure hydra user owns the runtime and workspace
+RUN chown -R hydra:hydra /runtime /workspace
+
+USER hydra
+EXPOSE 5000
+
+# Start the runtime server
+CMD ["node", "/runtime/server.js"]

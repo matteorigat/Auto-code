@@ -1,0 +1,10 @@
+/home/ubuntu/projects/opencode-bridge-telegram/.hydra/*.log
+/home/ubuntu/projects/opencode-bridge-telegram/.hydra/*.jsonl {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

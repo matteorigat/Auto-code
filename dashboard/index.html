@@ -188,6 +188,28 @@
                     </div>
                 </div>
 
+                <!-- Cognitive Engine SOTA Metrics -->
+                <div class="glass-panel p-6">
+                    <h3 class="text-sm font-semibold text-zinc-200 mb-4 flex items-center gap-2">
+                        🧠 Cognitive Engine
+                        <span class="text-[10px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded uppercase tracking-wider font-bold">Active</span>
+                    </h3>
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center p-3 bg-zinc-800/30 rounded-lg border border-zinc-700/50">
+                            <div class="text-xs text-zinc-400">Semantic Cache Hits</div>
+                            <div class="text-lg font-bold code-font text-purple-400" id="sota-cache-hits">0</div>
+                        </div>
+                        <div class="flex justify-between items-center p-3 bg-zinc-800/30 rounded-lg border border-zinc-700/50">
+                            <div class="text-xs text-zinc-400">Est. API Cost Saved</div>
+                            <div class="text-lg font-bold code-font text-green-400" id="sota-cost-saved">$0.00</div>
+                        </div>
+                        <div class="flex justify-between items-center p-3 bg-zinc-800/30 rounded-lg border border-zinc-700/50">
+                            <div class="text-xs text-zinc-400">LoRA Distillation Samples</div>
+                            <div class="text-lg font-bold code-font text-blue-400" id="sota-distill-samples">0</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Active Fallback Chains -->
                 <div class="glass-panel p-6">
                     <h3 class="text-sm font-semibold text-zinc-200 mb-4">Active Routing Chains</h3>
@@ -287,14 +309,15 @@
 
         async function fetchData() {
             try {
-                const [summaryRes, bridgeRes, dailyRes, callsRes, sessionsRes, sysRes, routingRes] = await Promise.all([
+                const [summaryRes, bridgeRes, dailyRes, callsRes, sessionsRes, sysRes, routingRes, sotaRes] = await Promise.all([
                     fetch('/api/summary?range=' + currentRange).then(r => r.json()).catch(() => null),
                     fetch('/api/bridge-state').then(r => r.json()).catch(() => null),
                     fetch('/api/daily').then(r => r.json()).catch(() => null),
                     fetch('/api/calls?days=1').then(r => r.json()).catch(() => null),
                     fetch('/api/sessions').then(r => r.json()).catch(() => null),
                     fetch('/api/sysinfo').then(r => r.json()).catch(() => null),
-                    fetch('/api/routing-chain').then(r => r.json()).catch(() => null)
+                    fetch('/api/routing-chain').then(r => r.json()).catch(() => null),
+                    fetch('/api/sota-stats').then(r => r.json()).catch(() => null)
                 ]);
 
                 if (summaryRes) updateSummary(summaryRes);
@@ -304,6 +327,7 @@
                 if (sessionsRes) updateSessions(sessionsRes);
                 if (sysRes) updateSysinfo(sysRes);
                 if (routingRes) updateRoutingChain(routingRes);
+                if (sotaRes) updateSotaStats(sotaRes);
 
             } catch (e) {
                 console.error("Failed to fetch data", e);
@@ -485,6 +509,13 @@
                 html += `</div></div>`;
             }
             container.innerHTML = html;
+        }
+
+        function updateSotaStats(s) {
+            if (!s || s.error) return;
+            document.getElementById('sota-cache-hits').textContent = new Intl.NumberFormat().format(s.cache_hits || 0);
+            document.getElementById('sota-cost-saved').textContent = '$' + Number(s.cost_saved||0).toFixed(4);
+            document.getElementById('sota-distill-samples').textContent = new Intl.NumberFormat().format(s.distillation_samples || 0);
         }
 
         async function bridgeCmd(cmd) {

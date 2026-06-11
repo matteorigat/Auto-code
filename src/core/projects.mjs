@@ -6,9 +6,6 @@ const projectsRoot = join(__dirname, "..", ".."); // Oracle-remote/projects/
 
 export const PROJECTS = {
   "bridge": { path: join(projectsRoot, "opencode-bridge-telegram"), desc: "OpenCode Bridge Telegram" },
-  "expense-tracker": { path: join(projectsRoot, "expense-tracker"), desc: "Expense Tracker App" },
-  "playground": { path: join(projectsRoot, "playground"), desc: "Testing / Playground" },
-  "hydra-loop": { path: join(projectsRoot, "opencode-bridge-telegram"), desc: "Hydra Loop stessa" },
   "neo": { path: join(projectsRoot, "neo"), desc: "Next.js Neo" },
 
 };

@@ -36,9 +36,21 @@ class SQLiteCompatibleLogger(CustomLogger):
                 }
             }
 
-            os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-            with open(LOG_FILE, "a") as f:
-                f.write(json.dumps(log_entry) + "\n")
+            # Send directly to new Node.js Dashboard via webhook
+            import urllib.request
+            req = urllib.request.Request(
+                "http://127.0.0.1:8081/api/internal/log-call",
+                data=json.dumps(log_entry).encode('utf-8'),
+                headers={'Content-Type': 'application/json'}
+            )
+            try:
+                urllib.request.urlopen(req, timeout=2)
+            except Exception as inner_e:
+                # Fallback to local file if dashboard is restarting
+                os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+                with open(LOG_FILE, "a") as f:
+                    f.write(json.dumps(log_entry) + "\n")
+                
         except Exception as e:
             print(f"Error in custom logger: {e}")
 

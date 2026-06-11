@@ -4,32 +4,26 @@
 
 ```
 .
-├── index.mjs               # Bridge v3 (main) — API server mode, wizard, loop control
-├── bridge-v2.cjs           # Bridge v2 — legacy 1:1 command interface via `opencode run` CLI
-├── bridge-v3.mjs           # Bridge v3 (standalone) — slim variant of index.mjs
-├── agents/
-│   ├── hydra-loop.mjs      # 24/7 SDD orchestrator (phase state machine)
-│   ├── loop.mjs            # Legacy Ralph Loop (superseded)
-│   └── runner.mjs          # Sub-agent runner — fresh session per agent type
-└── lib/
-    ├── agent-runtime.mjs   # Async streaming runtime with SSE, stagnation detection
-    ├── durable-state.mjs   # Atomic JSON checkpoint per phase transition
-    ├── memory-manager.mjs  # Event stream, patterns DB, progress.txt (JSON/JSONL)
-    ├── notion-adapter.mjs  # Notion CRUD — page mode + database mode
-    ├── projects.mjs        # Project registry (path + desc map)
-    ├── quality-gate.mjs    # Plugin check runner (typecheck, test, lint, build)
-    ├── safety.mjs          # Circuit breaker, cost guard, git snapshot, timeout
-    ├── task-manager.mjs    # PRD I/O, dependency graph, story splitting, project sync
-    └── telegram-channel.mjs # Pinned status, HITL keyboards, alerts, heartbeat
+├── src/                    # Telegram Bot and process management
+│   ├── index.mjs           # Main entry point for the bot and services
+│   ├── bot/                # Telegram bot, Wizard FSM, telegram-channel.mjs
+│   ├── core/               # OpenCode client, durable-state, memory-manager, safety, task-manager, etc.
+│   └── services/           # Process management (LiteLLM, opencode serve)
+└── agents/
+    ├── orchestrator/       # 24/7 SDD Orchestrator (Event-driven Phase State Machine)
+    │   ├── index.mjs       # Main orchestrator loop
+    │   └── phases/         # Handlers for each phase (idle, plan, exec, qa, etc.)
+    ├── workers/            # Isolated worker processes
+    ├── runtime.mjs         # Async streaming runtime with SSE, stagnation detection
+    └── docker-runtime.mjs  # Sub-agent Docker runner
 ```
 
 ### Entry Points
 
 | File | Role |
 |------|------|
-| `index.mjs` | **Main bridge**. Manages `opencode serve` subprocess, Telegram polling, wizard (`/new`), session CRUD, SSE streaming, Hydra Loop lifecycle. 1141 lines. |
-| `bridge-v2.cjs` | **Legacy 1:1 bridge**. Calls `opencode run` CLI directly. Inline keyboards for model/agent/project. 817 lines. |
-| `bridge-v3.mjs` | **Standalone v3 bridge**. Same API-server mode as index.mjs but without wizard or loop control. 656 lines. |
+| `src/index.mjs` | **Main bridge**. Manages `opencode serve` subprocess, LiteLLM proxy, and Health server. Instantiates Telegram bot polling and wizard (`/new`). |
+| `agents/orchestrator/index.mjs` | **Main orchestrator**. Replaces hydra-loop.mjs. Event-driven loop managing phases (IDLE, PLAN, EXEC, QA, COMMIT, REFLECT, DISCOVER, ecc.). |
 
 ### Loop Project Structure
 
@@ -360,13 +354,13 @@ Se arriva nuovo task da Notion:
 - **Session lifecycle**: auto-create on first message, `/new` resets + deletes messages
 - **Authorization**: `TELEGRAM_ALLOWED_USER_ID` comma-separated list (default: `***REMOVED***`)
 
-### 6.2 Durable State (`lib/durable-state.mjs`)
+### 6.2 Durable State (`src/core/durable-state.mjs`)
 - **File**: `.hydra/loop-checkpoint.json`
 - **Atomic writes**: write to `*.tmp{timestamp}` → `renameSync` → delete backup
 - **Schema**: `{ version, phase, lastPhase, currentTaskId, currentStory, attempt, maxAttempts, previousError, eventId, costAccumulatorUsd, storiesCompletedToday }`
 - **Transition**: `transition(newPhase, extraFields)` — sets `lastPhase`, increments `eventId`, merges extra, saves
 
-### 6.3 Task Manager (`lib/task-manager.mjs`)
+### 6.3 Task Manager (`src/core/task-manager.mjs`)
 - **Sources**: `prd.json` (local) + `NotionAdapter` (remote)
 - **Structure**: root prd.json ha `projects[]` (ogni progetto con `stories[]`) + `crossProjectStories[]`
 - **Flatten**: `loadTasks()` appiattisce da tutti i progetti in un array interno con `_projectSlug`
@@ -377,7 +371,7 @@ Se arriva nuovo task da Notion:
 - **CRUD**: `getNextPending()`, `markPass()`, `markBlocked()`, `addStory()`
 - **Project sync**: `_syncProjectFiles()` aggiorna il per-project prd.json + root prd.json
 
-### 6.4 Agent Runtime (`lib/agent-runtime.mjs`)
+### 6.4 Agent Runtime (`agents/runtime.mjs`)
 - **Session**: creates fresh OpenCode session per `run()`
 - **SSE**: subscribes to `/global/event`, processes event types:
   - `message.part.updated.type=reasoning` → thinking event
@@ -391,15 +385,17 @@ Se arriva nuovo task da Notion:
 - **Stagnation**: same error fingerprint ≥3 times → emit `stagnation` event
 - **Poll fallback**: polls `GET /session/{id}/message` every 3s as SSE backup
 - **Timeout**: configurable via `Safety.maxCycleMs()`
+- **SOTA Cache**: Predictive Semantic Cache using `src/core/semantic-cache.mjs`
+- **SOTA Distillation**: Auto-Distillation using `src/core/distillation-logger.mjs`
 
-### 6.5 Telegram Channel (`lib/telegram-channel.mjs`)
+### 6.5 Telegram Channel (`src/bot/telegram-channel.mjs`)
 - **Pinned message**: debounced at 2s interval, shows phase, task, model, context, cost, files, uptime
 - **Heartbeat**: `sendChatAction('typing')` every 4s while loop is alive — user knows system isn't crashed
 - **HITL**: `requestHumanGate()` sends inline keyboard: Approve / Reject / Pause / Abort
 - **Alerts**: `alert(level, text)` — info (ℹ️), warn (⚠️), critical (🚨)
 - **Auto-reinit**: if pinned message is deleted → re-send and re-pin
 
-### 6.6 Notion Adapter (`lib/notion-adapter.mjs`)
+### 6.6 Notion Adapter (`src/core/notion-adapter.mjs`)
 - **Two modes**: Page mode (heading_3 blocks as stories) and Database mode (structured properties)
 - **Auto-detect**: tries `/databases/{id}` first, falls back to page mode
 - **Page mode**: parses `### N) "Title" (tag)` headings, nested blocks via recursive fetch
@@ -408,21 +404,21 @@ Se arriva nuovo task da Notion:
 - **Create**: `createStory()` checks duplicates by `Story ID`, appends block or creates DB page
 - **New project detection**: `pullTasks()` returns all pages → IDLE confronta pageId con root prd.json
 
-### 6.7 Memory Manager (`lib/memory-manager.mjs`)
+### 6.7 Memory Manager (`src/core/memory-manager.mjs`)
 - Uses **JSONL** (`event-stream.jsonl`) and **JSON** (`patterns.json`) — no SQLite
 - Append-only event log via `appendEvent(type, payload)`
 - Pattern deduplication by normalized text, max 200 entries
 - `progress.txt` compatibility: `appendProgress()` writes chronological log entries
 - Compaction stubbed at 50 MB threshold (not implemented)
 
-### 6.8 Quality Gate (`lib/quality-gate.mjs`)
+### 6.8 Quality Gate (`src/core/quality-gate.mjs`)
 - Project-local config: `.hydra/gate.json` with `checks` array
 - Auto-detect from `package.json` scripts: `typecheck`, `test`, `lint`, `build`
 - Default checks: `typecheck`, `test` (required), `lint` (optional)
 - Port injection: `{APP_PORT}` placeholder replaced from `.port` file
 - Returns `{ passed, results: [{ name, passed, required, output, exitCode }] }`
 
-### 6.9 Safety (`lib/safety.mjs`)
+### 6.9 Safety (`src/core/safety.mjs`)
 - **Circuit breaker**: 3 consecutive 5xx/429 → open. Half-open after 5 min cooldown.
 - **Cost guard**: daily window (24h), configurable via `LOOP_DAILY_COST_LIMIT` (default $10). Quando superato → pausa solo il progetto corrente, non l'intero loop.
 - **Git snapshot**: `git stash push -m "hydra-pre-{storyId}"` before EXEC. Rollback via stash pop.
@@ -469,8 +465,8 @@ runner.mjs (used standalone or by legacy loop):
   → same context injection pattern
 ```
 
-### `agents/hydra-loop.mjs` — SDD State Machine Loop
-The primary 24/7 loop. Uses all `lib/` components. Recovers from `loop-checkpoint.json` on restart. Handles all phases including DISCOVER (parallel discovery agents) and WAIT_HUMAN (polling for resume signal).
+### `agents/orchestrator/index.mjs` — SDD State Machine Loop
+The primary 24/7 loop. Uses all `src/core/` components. Recovers from `loop-checkpoint.json` on restart. Handles all phases including DISCOVER (parallel discovery agents) and WAIT_HUMAN (polling for resume signal).
 
 Key architectural patterns:
 - **Project Registry**: `Map<pageId, {slug, title, dir}>` — refreshato ogni IDLE da root prd.json
@@ -591,7 +587,7 @@ index.mjs (entry)
 ├── imports → PROJECTS (projects.mjs)
 ├── imports → MemoryManager
 ├── spawns → agents/hydra-loop.mjs
-│   └── imports → lib/* (all)
+│   └── imports → src/core/* (all)
 └── spawns → agents/runner.mjs (via /loop agent command)
 
 bridge-v3.mjs (standalone alternative)
@@ -600,5 +596,5 @@ bridge-v3.mjs (standalone alternative)
 
 bridge-v2.cjs (legacy)
 ├── calls → opencode run CLI
-└── standalone (no lib/ imports)
+└── standalone (no core imports)
 ```

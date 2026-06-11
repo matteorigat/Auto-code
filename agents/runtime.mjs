@@ -12,6 +12,7 @@
 import { EventEmitter } from "node:events";
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from "node:fs";
 import { join, basename } from "node:path";
+import { systemPrompts } from "../src/prompts/system-prompts.mjs";
 
 const OC_URL = process.env.OC_URL || "http://127.0.0.1:4096";
 const DEFAULT_TIMEOUT_MS = 900_000; // 15 min per story
@@ -29,13 +30,34 @@ function logErr(projectPath, ctx, err) {
   console.error(`[runtime ${ctx}]`, err?.message || err);
 }
 
+async function fetchWithRetry(url, options, projectPath, ctx, retries = 3, delay = 10000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.status === 429 || res.status === 503) {
+        if (i === retries - 1) return res;
+        const backoffMs = 60000 * (i + 1); // Exponential-ish backoff
+        logErr(projectPath, `fetchWithRetry.${ctx}`, new Error(`HTTP ${res.status}, retrying ${i + 1}/${retries} in ${backoffMs}ms...`));
+        await new Promise(r => setTimeout(r, backoffMs));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      logErr(projectPath, `fetchWithRetry.${ctx}`, new Error(`${err.message || err}, retrying ${i + 1}/${retries} in ${delay}ms...`));
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
 export class AgentRuntime extends EventEmitter {
-  constructor({ projectPath, agentType = "builder", task = null, safety = null } = {}) {
+  constructor({ projectPath, agentType = "builder", task = null, safety = null, stream = null } = {}) {
     super();
     this.projectPath = projectPath;
     this.agentType = agentType;
     this.task = task;
     this.safety = safety;
+    this.stream = stream;
     this.sessionId = null;
     this.sseController = null;
     this.running = false;
@@ -51,12 +73,43 @@ export class AgentRuntime extends EventEmitter {
     this.on("error", () => {});
   }
 
+  emit(eventName, ...args) {
+    if (this.stream) {
+      if (eventName === "thinking") this.stream.emit("Thought", "agent", args[0] || {});
+      else if (eventName === "toolCall") this.stream.emit("Action", "agent", args[0] || {});
+      else if (eventName === "error" || eventName === "runtimeError") this.stream.emit("Observation", "environment", { error: args[0]?.message || args[0] });
+    }
+    return super.emit(eventName, ...args);
+  }
+
   /* ─── Low-level OpenCode API ─── */
 
-  async api(method, path, opts = {}) {
-    const url = `${OC_URL}${path}`;
+  async _getOcUrl() {
     try {
-      const res = await fetch(url, {
+      const { getDockerController } = await import("./docker-runtime.mjs");
+      const controller = getDockerController(this.projectPath);
+      // Ensure sandbox is started. Since AgentRuntime creates a new session per task, 
+      // we can map the sandbox using the taskId (or sessionId if taskId is missing).
+      // Here we just ask for the sandbox matching the projectPath.
+      // A better way is to pass taskId to AgentRuntime constructor.
+      if (this.task && this.task.id) {
+        const cid = await controller.startSandbox(this.task.id, this.projectPath);
+        const container = controller.containers.get(this.task.id);
+        if (container && container.ip) {
+          return `http://${container.ip}:5000`;
+        }
+      }
+    } catch (e) {
+      // Fallback
+    }
+    return OC_URL;
+  }
+
+  async api(method, path, opts = {}) {
+    const baseUrl = await this._getOcUrl();
+    const url = `${baseUrl}${path}`;
+    try {
+      const res = await fetchWithRetry(url, {
         method,
         headers: {
           "Content-Type": "application/json",
@@ -64,7 +117,7 @@ export class AgentRuntime extends EventEmitter {
           ...opts.headers,
         },
         body: opts.body ? JSON.stringify(opts.body) : undefined,
-      });
+      }, this.projectPath, `API.${method}`);
       if (!res.ok) {
         this.safety?.recordApiFailure(res.status);
         const text = await res.text().catch(() => "");
@@ -121,136 +174,7 @@ export class AgentRuntime extends EventEmitter {
     const prdRaw = read(prdPath, 4000);
     const agents = read(agentsGlob, 2000);
 
-    const systemParts = {
-      builder: `You are a Builder implementing ONE user story using SDD.
-Context files in this project (read them first):
-- CONSTITUTION.md — project principles and constraints
-- PRODUCT-SPEC.md — functional requirements
-- TECHNICAL-SPEC.md — architecture and tech decisions
-- PLAN.md — implementation plan with task details
-- prd.json — story list with acceptance criteria
-
-Rules:
-1. Read prd.json. Pick the first story where passes: false.
-2. Read acceptanceCriteria — those are your EXACT requirements.
-3. Look for pre-written test files in the project — run them first (they encode AC).
-4. Implement to make tests pass (test-first: red → green → refactor).
-5. If no tests exist, write tests first, then implement.
-6. Run quality checks (typecheck, test, lint). Fix until all pass.
-7. When criteria pass, set passes: true in prd.json.
-8. Before committing, read/modify nearby AGENTS.md with reusable patterns.
-9. Append to progress.txt (Codebase Patterns section at top; chronological below).
-10. Commit with feat(story-#id): title.
-11. If ALL stories pass, output <promise>COMPLETE</promise>.
-Remember: each run is FRESH. Use files on disk for context.`,
-
-      "bug-hunter": `You are a Bug Hunter. FRESH analysis.
-1. Run the app. Test every page/feature.
-2. Read ALL code files looking for issues.
-3. Append EACH bug found to bugs.md:
-   [ ] Description | File:line | Severity (low/medium/high/critical)
-4. Append summary to progress.txt.`,
-
-      innovator: `You are an Innovator. FRESH ideation.
-1. Read all code, run the app, explore every feature.
-2. Propose NEW ideas appended to ideas.md:
-   [ ] Idea | Description | Impact | Effort
-3. Append top 3 recommendations to progress.txt.`,
-
-      orchestrator: `You are the Orchestrator. Maintain prd.json from bugs.md and ideas.md.
-Deduplicate: if a story with similar title exists, SKIP it.
-Add acceptanceCriteria to new stories.
-Reorder by priority: 1 critical → 4 low.
-Never delete existing stories.`,
-
-      "project-planner": `You are a Project Planner using SDD (Spec-Driven Development).
-A new project is starting with NO code yet. Design the complete implementation roadmap.
-
-Read project title and description from ideas.md (or directory name).
-Create these files in the project directory:
-
-1. CONSTITUTION.md — Immutable principles:
-   - Tech stack non-negotiables (language, framework, database, testing)
-   - Coding conventions and patterns
-   - Architecture constraints
-   - Quality gates (typecheck, test, lint)
-
-2. PRODUCT-SPEC.md — Functional specification:
-   - User personas and core journeys
-   - Feature list with acceptance criteria
-   - What the system does (not how)
-
-3. TECHNICAL-SPEC.md — Technical specification:
-   - Tech stack decisions with rationale
-   - Architecture overview (ASCII diagram ok)
-   - Data models and schemas
-   - API contracts and interfaces
-   - File tree structure
-
-4. PLAN.md — Implementation plan:
-   - Tasks: 3-12 ordered implementation steps from init to MVP
-   - Each task: title, description, files changed, AC (3-5 per task), dependencies
-   - Identify parallelizable tasks
-   - Task 1 MUST be project setup (init, config, deps, CI)
-
-5. Update prd.json:
-   - codebasePatterns: condensed summary of tech+arch decisions
-   - stories: map 1:1 to PLAN.md tasks
-
-Also append to progress.txt: summary of all decisions made.`,
-
-      "task-planner": `You are a Task Planner using SDD (Spec-Driven Development) for ONE task.
-Your job: prepare a task for implementation by writing specs and tests.
-
-Read the project directory:
-- CONSTITUTION.md — project principles to follow
-- PRODUCT-SPEC.md — functional context
-- TECHNICAL-SPEC.md — architecture and tech stack
-- PLAN.md — full implementation plan
-- prd.json — story list
-
-The current task is described in the task context. Do:
-1. Write test files that encode the task's acceptance criteria as runnable tests
-   - Follow the project's test framework (from CONSTITUTION.md or package.json)
-   - Start with the test that captures the core behavior
-2. Update PLAN.md with task-specific implementation details
-3. Append task prerequisites and notes to progress.txt
-
-IMPORTANT: Tests MUST exist before builder runs. Write real, runnable tests.`,
-
-      "skill-extractor": `You are a Skill Extractor. You analyze the code changes made in a git diff to extract generalized, reusable rules, gotchas, or design patterns (skills) for future builder runs.
-Instructions:
-1. Carefully analyze the provided git diff.
-2. If the change is trivial (e.g. only adding comments, changing a single config line, formatting), output exactly: NO_SKILL
-3. Otherwise, write a generalized markdown documentation for this skill.
-4. The skill documentation MUST follow this format:
-   # [Skill Title - descriptive name of the pattern/integration]
-   
-   ## Context
-   [Briefly explain when this pattern is applicable]
-   
-   ## Pattern / Best Practice
-   [Explain the rules, conventions, or design decisions to follow]
-   
-   ## Gotchas / Troubleshooting
-   [Describe edge cases, common bugs, or setup details to watch out for]
-   
-5. Keep it concise, focused on reusable technical patterns, and language-independent where possible.
-6. Do NOT include story-specific details, commit hashes, or author information.`,
-
-      "summarizer": `You are a Log Summarizer. Your job is to condense a long stream of system event logs into a dense, high-level summary (MemGPT style) to preserve context while reducing token usage.
-Instructions:
-1. Read the provided chronological list of events.
-2. Group related events (e.g. multiple retries, builder attempts, or successive QA gates).
-3. Produce a concise, bulleted markdown summary of:
-   - Completed features and stories.
-   - Blocked tasks and the exact reasons they failed.
-   - Discovered bugs or ideas.
-   - Significant system status changes.
-4. Output only the summarized markdown content. Do not include introductory or concluding text.`,
-    };
-
-    const system = systemParts[this.agentType] || systemParts.builder;
+    const system = systemPrompts[this.agentType] || systemPrompts.builder;
 
     const context = [
       `## System\n${system}`,
@@ -288,10 +212,37 @@ Instructions:
 
     // Send prompt and capture the response — it contains the assistant message inline
     const prompt = this.buildPrompt();
+    this.lastPrompt = prompt;
+
+    // --- SOTA: Predictive Semantic Caching ---
+    if (["planner", "architect", "reviewer", "qa", "visual-reviewer"].includes(this.agentType)) {
+      try {
+        const { SemanticCache } = await import("../src/core/semantic-cache.mjs");
+        const cache = new SemanticCache(this.projectPath);
+        const match = await cache.findMatch(prompt, 0.95);
+        if (match && match.hit) {
+          this.emit("log", { level: "info", message: `🧠 Semantic Cache HIT for ${this.agentType}! Similarity: ${(match.similarity * 100).toFixed(1)}%` });
+          this._completed = true;
+          const costSaved = match.costSaved || 0;
+          return { ok: true, sessionId: this.sessionId || "cached", cost: 0, elapsedMs: 0, content: match.content, result: { info: { content: match.content } } };
+        }
+      } catch (e) {
+        logErr(this.projectPath, "semantic-cache", e);
+      }
+    }
+    
+    const parts = [{ type: "text", text: prompt }];
+    if (this.task?._screenshotBase64) {
+      parts.push({
+        type: "image_url",
+        image_url: { url: `data:image/png;base64,${this.task._screenshotBase64}` }
+      });
+    }
+
     let postResult;
     try {
       postResult = await this.api("POST", `/session/${this.sessionId}/message`, {
-        body: { parts: [{ type: "text", text: prompt }] },
+        body: { parts },
       });
     } catch (e) {
       // POST failed — let the poll timer or timeout handle recovery
@@ -404,13 +355,13 @@ Instructions:
     this.sseController = new AbortController();
 
     const url = `${OC_URL}/global/event`;
-    fetch(url, {
+    fetchWithRetry(url, {
       headers: {
         "x-opencode-directory": this.projectPath,
         Accept: "text/event-stream",
       },
       signal: this.sseController.signal,
-    }).then(async (res) => {
+    }, this.projectPath, "SSE").then(async (res) => {
       if (!res.ok) {
         this.emit("error", new Error(`SSE ${res.status}`));
         return;
@@ -485,7 +436,7 @@ Instructions:
       }
       if (typeof info.cost === "number") {
         this.costAccumulator += info.cost;
-        this.emit("cost", { cost: this.costAccumulator, sessionId: this.sessionId });
+        this.emit("cost", { cost: this.costAccumulator, tokens: this.tokensUsed, sessionId: this.sessionId });
       }
 
       // Completion check
@@ -563,6 +514,7 @@ Instructions:
         content,
         result: { info: { content } },
       });
+      this._storeSotaData(content);
       this._cleanup();
     } catch {
       // If prd.json unreadable, just mark completed on message.updated
@@ -572,7 +524,26 @@ Instructions:
         content,
         result: { info: { content } },
       });
+      this._storeSotaData(content);
       this._cleanup();
+    }
+  }
+
+  async _storeSotaData(content) {
+    if (!content || !this.lastPrompt) return;
+    try {
+      const { DistillationLogger } = await import("../src/core/distillation-logger.mjs");
+      const logger = new DistillationLogger(this.projectPath);
+      const sysPrompt = systemPrompts[this.agentType] || systemPrompts.builder;
+      logger.appendSuccess(sysPrompt, this.lastPrompt, content);
+
+      if (["planner", "architect", "reviewer", "qa", "visual-reviewer"].includes(this.agentType)) {
+        const { SemanticCache } = await import("../src/core/semantic-cache.mjs");
+        const cache = new SemanticCache(this.projectPath);
+        await cache.store(this.lastPrompt, content, this.costAccumulator);
+      }
+    } catch (e) {
+      logErr(this.projectPath, "sota-storage", e);
     }
   }
 
@@ -603,16 +574,30 @@ Instructions:
       content,
       result: postResult || { info: { content } },
     });
+    this._storeSotaData(content);
     this._cleanup();
   }
 
   /* ─── Stagnation detection ─── */
 
-  _recordError(msg) {
+  async _recordError(msg) {
     if (!this.running) return;
+    
+    // SOTA Pattern: Rate limits should not poison the stagnation logic
+    const msgLower = msg.toLowerCase();
+    const isRateLimit = msgLower.includes("429") || msgLower.includes("rate limit") || msgLower.includes("too many requests");
+    
+    if (isRateLimit) {
+      logErr(this.projectPath, "rate-limit", new Error(`Rate limit detected via SSE: ${msg}. Sleeping 60s to protect bucket...`));
+      await new Promise(r => setTimeout(r, 60000));
+      this._cleanup();
+      this.emit("runtimeError", new Error(`RATE_LIMIT: ${msg}`));
+      return;
+    }
+
     const err = new Error(`Stagnation/Retry: ${msg}`);
     logErr(this.projectPath, "stagnation", err);
-    const key = msg.toLowerCase().slice(0, 120); // fingerprint
+    const key = msgLower.slice(0, 120); // fingerprint
     const prev = this.stagnationMap.get(key) || 0;
     const next = prev + 1;
     this.stagnationMap.set(key, next);

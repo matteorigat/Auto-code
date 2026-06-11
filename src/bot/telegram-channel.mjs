@@ -27,8 +27,7 @@ export class TelegramChannel {
       taskId: null,
       project: "—",
       model: "—",
-      tokensUsed: 0,
-      tokensLimit: 200_000,
+      tokens: 0,
       cost: 0,
       files: [],
       uptimeSec: 0,
@@ -205,6 +204,10 @@ export class TelegramChannel {
       contextLines = `\n📊 *Avanzamento:* ${ratio}% completo — ${s.tasksTotal - s.tasksCompleted} task ancora da fare`;
     }
 
+    const tokenStr = s.tokens >= 1000000 
+      ? (s.tokens / 1000000).toFixed(2) + "M" 
+      : (s.tokens >= 1000 ? (s.tokens / 1000).toFixed(1) + "k" : s.tokens);
+
     return [
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `  🐍 *HYDRA LOOP*  ·  \`${s.project}\``,
@@ -215,7 +218,7 @@ export class TelegramChannel {
       `📊 *Task completati:*   ✅ ${s.tasksCompleted}  |  ⛔ ${s.tasksBlocked}  |  📋 ${s.tasksTotal} totali`,
       `${contextLines}`,
       `🧠 *Task in corso:* ${s.taskTitle.slice(0, 80) || "nessuno"}`,
-      `💰 *Costo:* $${s.cost.toFixed(2)}  |  ⏱️ *Attivo da:* ${uptimeStr}`,
+      `💰 *Costo:* $${s.cost.toFixed(2)}  |  📈 *Token:* ${tokenStr}  |  ⏱️ *Attivo da:* ${uptimeStr}`,
       `${humanHelp}`,
       `📝 *File modificati:* ${files}`,
     ].filter(Boolean).join("\n");

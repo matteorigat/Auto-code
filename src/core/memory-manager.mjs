@@ -10,8 +10,9 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, statSync, renameSyn
 import { join } from "node:path";
 
 export class MemoryManager {
-  constructor(projectPath) {
+  constructor(projectPath, stream = null) {
     this.projectPath = projectPath;
+    this.stream = stream;
     this.hydraDir = join(projectPath, ".hydra");
     if (!existsSync(this.hydraDir)) mkdirSync(this.hydraDir, { recursive: true });
     this.jsonlPath = join(this.hydraDir, "event-stream.jsonl");
@@ -31,10 +32,14 @@ export class MemoryManager {
   /* ─── Structured Event Stream ─── */
 
   appendEvent(type, payload = {}) {
-    const line = JSON.stringify({ ts: Date.now(), type, payload });
-    try {
-      writeFileSync(this.jsonlPath, line + "\n", { flag: "a" });
-    } catch {}
+    if (this.stream) {
+      this.stream.emit(type, "system", payload);
+    } else {
+      const line = JSON.stringify({ ts: Date.now(), type, payload });
+      try {
+        writeFileSync(this.jsonlPath, line + "\n", { flag: "a" });
+      } catch {}
+    }
   }
 
   readEvents(since = 0) {
@@ -43,7 +48,10 @@ export class MemoryManager {
         .split("\n")
         .filter(Boolean)
         .map((l) => JSON.parse(l))
-        .filter((e) => e.ts >= since);
+        .filter((e) => {
+          const t = e.ts || (e.timestamp ? new Date(e.timestamp).getTime() : 0);
+          return t >= since;
+        });
     } catch { return []; }
   }
 
@@ -126,7 +134,27 @@ export class MemoryManager {
     } catch { return false; }
   }
 
-  async compact() {
+  async compact(summarizerCallback) {
+    let summaryText = "";
+    if (typeof summarizerCallback === "function") {
+      try {
+        const runtime = summarizerCallback();
+        if (runtime) {
+          const events = this.readRecentEvents(100);
+          runtime.task = {
+            title: "Summarize event stream log",
+            description: JSON.stringify(events, null, 2),
+          };
+          const res = await runtime.run(180000);
+          if (res.ok) {
+            summaryText = res.content || res.result?.info?.content || "";
+          }
+        }
+      } catch (err) {
+        console.error("[MemoryManager] Semantic compaction summarization failed:", err.message);
+      }
+    }
+
     try {
       if (!existsSync(this.jsonlPath)) return true;
       for (let i = 2; i >= 0; i--) {
@@ -138,6 +166,9 @@ export class MemoryManager {
       }
       writeFileSync(this.jsonlPath, "", "utf-8");
       this.appendEvent("compactionDone", { sizeMb: 50, keptBackups: 3 });
+      if (summaryText) {
+        this.appendEvent("compactionSummary", { summary: summaryText });
+      }
       return true;
     } catch {
       this.appendEvent("compactionFailed", {});

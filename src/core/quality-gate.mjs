@@ -20,31 +20,37 @@ export class QualityGate {
     ];
   }
 
-  async run({ appPort = null, cwd = null } = {}) {
+  async run({ appPort = null, cwd = null, taskId = null } = {}) {
     const checks = this.loadChecks(cwd);
     const results = [];
     let passed = true;
     const workDir = cwd || this.projectPath;
+
+    const { getDockerController } = await import("../../agents/docker-runtime.mjs");
+    const dockerController = getDockerController(this.projectPath);
 
     for (const c of checks) {
       let cmd = c.cmd;
       if (appPort) {
         cmd = cmd.replace(/\$\{APP_PORT\}/g, String(appPort));
       }
+      
       let output = "";
       let exitCode = 0;
+      
       try {
-        output = execSync(cmd, {
-          cwd: workDir,
-          timeout: (c.timeout || 60) * 1000,
-          shell: "/bin/bash",
-          encoding: "utf-8",
-          stdio: ["pipe", "pipe", "pipe"],
-        }).toString();
-        exitCode = 0;
+        // Fallback to a temporary generic taskId if none provided
+        const execTaskId = taskId || `qa-${Date.now()}`;
+        
+        // Ensure sandbox is started
+        await dockerController.startSandbox(execTaskId, workDir);
+        
+        const result = await dockerController.execute(execTaskId, cmd, (c.timeout || 60) * 1000);
+        exitCode = result.exitCode;
+        output = (result.stdout || "") + "\n" + (result.stderr || "");
       } catch (e) {
-        exitCode = e.status || 1;
-        output = (e.stdout || "") + (e.stderr || "");
+        exitCode = 1;
+        output = e.message || "Failed to execute in sandbox";
       }
 
       const ok = exitCode === 0;
