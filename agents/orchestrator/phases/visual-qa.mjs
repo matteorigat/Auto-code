@@ -1,5 +1,5 @@
-import puppeteer from 'puppeteer';
-import { AgentRuntime } from "../../runtime.mjs";
+import { AgentRuntime } from '../../runtime.mjs';
+import { TierSelector } from '../../../src/core/tier-selector.mjs';
 
 export async function handleVisualQa(context) {
   const { tasks, stream, log, updateStatus, projectPath, state, safety } = context;
@@ -9,69 +9,98 @@ export async function handleVisualQa(context) {
   const visualQaTaskIds = currentState.visualQaTaskIds || [];
 
   if (!visualQaTaskIds.length) {
-    stream.emit("System", "system", { action: "PhaseChange", phase: "IDLE" });
+    stream.emit('System', 'system', { action: 'PhaseChange', phase: 'IDLE' });
     return;
+  }
+
+  // Check if Puppeteer is available and can be loaded
+  let puppeteer = null;
+  try {
+    puppeteer = (await import('puppeteer')).default;
+  } catch (e) {
+    log(`[VISUAL_QA] Puppeteer/Chrome is not available or failed to load: ${e.message}`);
   }
 
   let allPassed = true;
 
   for (const taskId of visualQaTaskIds) {
-    const task = tasks._tasks.find(t => String(t.id) === String(taskId));
+    const task = tasks._tasks.find((t) => String(t.id) === String(taskId));
     if (!task) continue;
 
     const ws = task.workspacePath || projectPath;
-    updateStatus({ phase: "VISUAL_QA", taskTitle: task.title, taskId: task.id });
+    updateStatus({ phase: 'VISUAL_QA', taskTitle: task.title, taskId: task.id });
 
     // Update state checkpoint with current task details during Visual QA
-    state.transition("VISUAL_QA", {
+    state.transition('VISUAL_QA', {
       currentTaskId: task.id,
-      currentStory: task.title
+      currentStory: task.title,
     });
-    
-    log(`[VISUAL_QA] Attempting to screenshot UI for ${taskId}`);
-    
+
     let browser;
     let screenshotBase64 = null;
-    try {
-      browser = await puppeteer.launch({ headless: "new", args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-      const page = await browser.newPage();
-      await page.goto('http://localhost:3000', { waitUntil: 'networkidle0', timeout: 5000 });
-      screenshotBase64 = await page.screenshot({ encoding: 'base64', fullPage: true });
-    } catch (e) {
-      log(`[VISUAL_QA] Could not capture screenshot (maybe not a web app or server not running): ${e.message}`);
-    } finally {
-      if (browser) await browser.close();
+
+    if (puppeteer) {
+      log(`[VISUAL_QA] Attempting to screenshot UI for ${taskId}`);
+      try {
+        browser = await puppeteer.launch({
+          headless: 'new',
+          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
+        const page = await browser.newPage();
+        await page.goto('http://localhost:3000', { waitUntil: 'networkidle0', timeout: 5000 });
+        screenshotBase64 = await page.screenshot({ encoding: 'base64', fullPage: true });
+      } catch (e) {
+        log(
+          `[VISUAL_QA] Could not capture screenshot (maybe not a web app, missing dependencies, or headless environment): ${e.message}`,
+        );
+      } finally {
+        if (browser) await browser.close();
+      }
+    } else {
+      log(
+        `[VISUAL_QA] Skipping screenshot capture because Puppeteer/Chrome is disabled or not installable on this system.`,
+      );
     }
 
     if (screenshotBase64) {
       log(`[VISUAL_QA] Invoking visual-reviewer AgentRuntime`);
-      
-      const runtime = new AgentRuntime({ projectPath: ws, agentType: "visual-reviewer", task, safety, stream });
-      
+
+      const tierSelector = new TierSelector();
+      const tier = tierSelector.select('QA');
+      tierSelector.applyTierConfig(tier, ws);
+
+      const runtime = new AgentRuntime({
+        projectPath: ws,
+        agentType: 'visual-reviewer',
+        task,
+        safety,
+        stream,
+      });
+
       // Pass the image context
       runtime.task = {
         ...task,
-        _screenshotBase64: screenshotBase64
+        _screenshotBase64: screenshotBase64,
       };
 
       const result = await runtime.run(120000);
-      const feedback = result.content || result.result?.info?.content || "";
-      
-      if (feedback.includes("APPROVED")) {
+      const feedback = result.content || result.result?.info?.content || '';
+
+      if (feedback.includes('APPROVED')) {
         log(`[VISUAL_QA] ${taskId} PASSED visual inspection`);
         tasks.markPass(taskId);
       } else {
         log(`[VISUAL_QA] ${taskId} FAILED visual inspection`);
         allPassed = false;
         const reflectionCount = currentState.reflectionCount || 0;
-        stream.emit("System", "system", { 
-          action: "PhaseChange", 
-          phase: "FIX", 
-          stateUpdates: { 
-            previousError: `Visual UI issues detected:\n${feedback}`, 
+        stream.emit('System', 'system', {
+          action: 'PhaseChange',
+          phase: 'FIX',
+          stateUpdates: {
+            previousError: `Visual UI issues detected:\n${feedback}`,
             fixTaskId: taskId,
-            reflectionCount: reflectionCount + 1
-          } 
+            reflectionCount: reflectionCount + 1,
+          },
         });
         return;
       }
@@ -83,6 +112,6 @@ export async function handleVisualQa(context) {
   }
 
   if (allPassed) {
-    stream.emit("System", "system", { action: "PhaseChange", phase: "COMMIT" });
+    stream.emit('System', 'system', { action: 'PhaseChange', phase: 'COMMIT' });
   }
 }

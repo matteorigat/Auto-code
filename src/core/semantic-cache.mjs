@@ -1,6 +1,7 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { pipeline, cos_sim } from "@xenova/transformers";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { EmbeddingService } from './embedding-service.mjs';
+import { cos_sim } from '@xenova/transformers';
 
 /**
  * SemanticCache
@@ -11,27 +12,19 @@ import { pipeline, cos_sim } from "@xenova/transformers";
 export class SemanticCache {
   constructor(projectPath) {
     this.projectPath = projectPath;
-    this.hydraDir = join(projectPath, ".hydra");
+    this.hydraDir = join(projectPath, '.hydra');
     if (!existsSync(this.hydraDir)) mkdirSync(this.hydraDir, { recursive: true });
-    this.cachePath = join(this.hydraDir, "semantic-cache.json");
-    
+    this.cachePath = join(this.hydraDir, 'semantic-cache.json');
+
     this.entries = [];
     this.extractor = null;
     this.loadCache();
   }
 
-  async initPipeline() {
-    if (!this.extractor) {
-      this.extractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
-        quantized: true, // 8-bit quantization for speed
-      });
-    }
-  }
-
   loadCache() {
     try {
       if (existsSync(this.cachePath)) {
-        const data = JSON.parse(readFileSync(this.cachePath, "utf-8"));
+        const data = JSON.parse(readFileSync(this.cachePath, 'utf-8'));
         this.entries = data.entries || [];
       }
     } catch (e) {
@@ -42,13 +35,13 @@ export class SemanticCache {
   saveCache() {
     try {
       writeFileSync(this.cachePath, JSON.stringify({ entries: this.entries }));
-    } catch {}
+    } catch (e) {
+      console.error('Ignored error:', e.message);
+    }
   }
 
   async getEmbedding(text) {
-    await this.initPipeline();
-    const output = await this.extractor(text, { pooling: "mean", normalize: true });
-    return Array.from(output.data);
+    return await EmbeddingService.getEmbedding(text);
   }
 
   /**
@@ -88,18 +81,18 @@ export class SemanticCache {
    */
   async store(prompt, content, costSaved = 0) {
     if (!prompt || !content) return;
-    
+
     const embedding = await this.getEmbedding(prompt);
-    
+
     // Check if exactly identical prompt exists to update it rather than append
-    const existingIdx = this.entries.findIndex(e => e.prompt === prompt);
-    
+    const existingIdx = this.entries.findIndex((e) => e.prompt === prompt);
+
     const newEntry = {
       prompt,
       embedding,
       content,
       costSaved,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     if (existingIdx >= 0) {
@@ -107,7 +100,7 @@ export class SemanticCache {
     } else {
       this.entries.push(newEntry);
     }
-    
+
     this.saveCache();
   }
 }

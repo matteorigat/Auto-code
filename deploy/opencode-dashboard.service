@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenCode Bridge Dashboard (standalone)
+After=network.target
+Before=opencode-bridge.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/projects/opencode-bridge-telegram
+ExecStart=/usr/bin/node /home/ubuntu/projects/opencode-bridge-telegram/src/dashboard/index.mjs
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+EnvironmentFile=-/home/ubuntu/projects/opencode-bridge-telegram/.env
+
+[Install]
+WantedBy=multi-user.target

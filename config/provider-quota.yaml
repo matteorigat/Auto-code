@@ -1,0 +1,187 @@
+# ─── Provider Quota Configuration ───
+# Source of truth for all provider rate limits.
+# Used by QuotaManager to track usage and by LiteLLM config generation.
+#
+# type:
+#   shared        – all models under this provider share one bucket
+#   per-model     – each model has independent limits
+#   opportunistic – no guaranteed quota, use as fallback only
+#   disabled      – provider excluded from routing
+
+providers:
+
+  # ─── OpenCode Zen ───
+  # Observed: ~200 requests per 5-6h, no published RPM/RPD
+  opencode_zen:
+    type: shared
+    rpm: null
+    rph: 200
+    rphPeriod: 5
+    rpd: null
+    models:
+      - id: openai/tier-4-planner
+        upstream: big-pickle
+        rpm: 10
+      - id: openai/tier-3-builder-fb4
+        upstream: deepseek-v4-flash-free
+        rpm: 10
+      - id: openai/tier-3-builder-fb5
+        upstream: mimo-v2.5-free
+        rpm: 10
+      - id: openai/tier-2-hunter-fb5
+        upstream: north-mini-code-free
+        rpm: 10
+      - id: openai/tier-4-planner-fb1
+        upstream: nemotron-3-ultra-free
+        rpm: 10
+
+  # ─── OpenRouter Free ───
+  # TOTAL: 20 RPM / 1000 RPD across ALL free models (single shared bucket)
+  openrouter:
+    type: shared
+    rpm: 20
+    rpd: 1000
+    models:
+      - id: openai/tier-4-planner-fb2
+        upstream: openrouter/owl-alpha
+        rpm: 3
+      - id: openai/tier-4-planner-fb3
+        upstream: deepseek/deepseek-v4-flash:free
+        rpm: 3
+      - id: openai/tier-3-builder-fb1
+        upstream: qwen/qwen3-coder:free
+        rpm: 3
+      - id: openai/tier-3-builder-fb2
+        upstream: poolside/laguna-m.1:free
+        rpm: 2
+      - id: openai/tier-3-builder-fb6
+        upstream: nex-agi/nex-n2-pro:free
+        rpm: 1
+      - id: openai/tier-3-builder-fb7
+        upstream: minimax/minimax-m2.5:free
+        rpm: 2
+      - id: openai/tier-3-builder-fb8
+        upstream: moonshotai/kimi-k2.6:free
+        rpm: 2
+      - id: openai/tier-4-planner-fb4
+        upstream: nvidia/nemotron-3-ultra-550b-a55b:free
+        rpm: 2
+      - id: openai/tier-2-hunter-fb1
+        upstream: openai/gpt-oss-120b:free
+        rpm: 10
+      - id: openai/tier-1-trivial-fb4
+        upstream: openrouter/free
+        rpm: 10
+
+  # ─── Kilo Free ───
+  # Observed: ~200 requests/h/IP; kilo-auto/free auto-routes best free model
+  kilo:
+    type: shared
+    rpm: null
+    rph: 200
+    rpd: null
+    models:
+      - id: openai/tier-4-planner-fb5
+        upstream: kilo-auto/free
+        rpm: 10
+
+  # ─── Groq Free ───
+  # Per-model limits (NOT shared across models)
+  groq:
+    type: per-model
+    models:
+      - id: openai/tier-2-hunter
+        upstream: qwen/qwen3-32b
+        rpm: 60
+        rpd: 1000
+        tpm: 6000
+        tpd: 500000
+      - id: openai/tier-1-trivial
+        upstream: llama-3.1-8b-instant
+        rpm: 30
+        rpd: 14400
+        tpm: 6000
+        tpd: 500000
+      - id: openai/tier-2-hunter-fb2
+        upstream: meta-llama/llama-4-scout-17b-16e-instruct
+        rpm: 30
+        rpd: 1000
+        tpm: 30000
+        tpd: 500000
+      - id: openai/tier-2-hunter-fb3
+        upstream: openai/gpt-oss-120b
+        rpm: 30
+        rpd: 1000
+        tpm: 8000
+        tpd: 200000
+      - id: openai/tier-3-builder-fb3
+        upstream: groq/compound
+        rpm: 30
+        rpd: 250
+        tpm: 70000
+
+  # ─── Mistral BYOK ───
+  # Org-level shared: ~60 RPM / 50K TPM / 4M TPMo
+  mistral:
+    type: shared
+    rpm: 60
+    tpm: 50000
+    tpmo: 4000000
+    models:
+      - id: openai/tier-4-planner-fb6
+        upstream: devstral-2512
+        rpm: 10
+      - id: openai/tier-3-builder
+        upstream: codestral-2508
+        rpm: 15
+      - id: openai/tier-4-planner-fb7
+        upstream: mistral-large-2512
+        rpm: 10
+      - id: openai/tier-4-planner-fb8
+        upstream: mistral-medium-3-5
+        rpm: 10
+      - id: openai/tier-3-builder-fb9
+        upstream: mistral-small-2603
+        rpm: 15
+      - id: openai/tier-2-hunter-fb4
+        upstream: ministral-14b-2512
+        rpm: 10
+      - id: openai/tier-2-hunter-fb5
+        upstream: ministral-8b-2512
+        rpm: 15
+      - id: openai/tier-1-trivial-fb1
+        upstream: ministral-3b-2512
+        rpm: 30
+
+  # ─── Cerebras Free Trial ───
+  # Account-level shared: 5 RPM / 2400 RPD / 30K TPM / 1M TPD / 65K context
+  cerebras:
+    type: shared
+    rpm: 5
+    rph: 150
+    rpd: 2400
+    tpm: 30000
+    tpd: 1000000
+    max_context: 65536
+    models:
+      - id: openai/tier-2-hunter-fb6
+        upstream: gpt-oss-120b
+        rpm: 5
+
+  # ─── NVIDIA Build/NIM ───
+  # Free endpoints, no guaranteed quota. Opportunistic fallback only.
+  nvidia:
+    type: opportunistic
+    models:
+      - id: openai/tier-4-planner-fb9
+        upstream: z-ai/glm-5.1
+        rpm: 10
+      - id: openai/tier-4-planner-fb10
+        upstream: deepseek-ai/deepseek-v4-pro
+        rpm: 10
+      - id: openai/tier-4-planner-fb11
+        upstream: deepseek-ai/deepseek-v4-flash
+        rpm: 10
+      - id: openai/tier-3-builder-fb10
+        upstream: minimaxai/minimax-m2.7
+        rpm: 10

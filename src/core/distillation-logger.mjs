@@ -1,5 +1,5 @@
-import { appendFileSync, mkdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, mkdirSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 /**
  * DistillationLogger
@@ -9,9 +9,9 @@ import { join } from "node:path";
 export class DistillationLogger {
   constructor(projectPath) {
     this.projectPath = projectPath;
-    this.hydraDir = join(projectPath, ".hydra");
+    this.hydraDir = join(projectPath, '.hydra');
     if (!existsSync(this.hydraDir)) mkdirSync(this.hydraDir, { recursive: true });
-    this.datasetPath = join(this.hydraDir, "distillation-dataset.jsonl");
+    this.datasetPath = join(this.hydraDir, 'distillation-dataset.jsonl');
   }
 
   /**
@@ -25,16 +25,16 @@ export class DistillationLogger {
 
     const entry = {
       messages: [
-        { role: "system", content: systemPrompt || "You are an expert developer." },
-        { role: "user", content: userPrompt },
-        { role: "assistant", content: assistantContent }
-      ]
+        { role: 'system', content: systemPrompt || 'You are an expert developer.' },
+        { role: 'user', content: userPrompt },
+        { role: 'assistant', content: assistantContent },
+      ],
     };
 
     try {
-      appendFileSync(this.datasetPath, JSON.stringify(entry) + "\n", "utf-8");
+      appendFileSync(this.datasetPath, JSON.stringify(entry) + '\n', 'utf-8');
     } catch (e) {
-      console.error("[DistillationLogger] Failed to write dataset entry:", e);
+      console.error('[DistillationLogger] Failed to write dataset entry:', e);
     }
   }
 }

@@ -3,537 +3,153 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oracle Dashboard</title>
+    <title>Oracle Control Center</title>
+    <meta name="description" content="Premium real-time command dashboard for OpenCode Bridge">
+    <link rel="stylesheet" href="/css/dashboard.css">
+    <link rel="stylesheet" href="/css/custom.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #09090b;
-            color: #fafafa;
-        }
-        .glass-panel {
-            background: rgba(24, 24, 27, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 1rem;
-        }
-        .code-font { font-family: 'JetBrains Mono', monospace; }
-        .gradient-text {
-            background: linear-gradient(to right, #60a5fa, #c084fc);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .pulse-dot {
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: .5; }
-        }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
-    </style>
     <script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
-                        background: '#09090b',
-                        surface: '#18181b',
+                        background: '#030712',
+                        surface: '#111827',
                         primary: '#8b5cf6',
+                        accentBlue: '#3b82f6',
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        danger: '#f43f5e',
                     }
                 }
             }
         }
     </script>
 </head>
-<body class="min-h-screen p-6">
-    <div class="max-w-7xl mx-auto space-y-6">
-        
-        <!-- Header -->
-        <header class="flex justify-between items-center glass-panel p-6">
-            <div>
-                <h1 class="text-2xl font-bold gradient-text tracking-tight">Oracle Control Center</h1>
-                <p class="text-sm text-zinc-400 mt-1">Autonomous Agent Fleet Monitoring</p>
-            </div>
-            <div class="flex items-center gap-4">
-                <div class="flex items-center gap-4 mr-2 hidden md:flex border-r border-white/5 pr-4">
-                    <div class="flex flex-col text-right">
-                        <span class="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">CPU</span>
-                        <span class="text-xs text-zinc-300 code-font" id="sys-cpu">--%</span>
-                    </div>
-                    <div class="flex flex-col text-right">
-                        <span class="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">RAM</span>
-                        <span class="text-xs text-zinc-300 code-font" id="sys-ram">--/-- GB</span>
-                    </div>
-                    <div class="flex flex-col text-right">
-                        <span class="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Disk</span>
-                        <span class="text-xs text-zinc-300 code-font" id="sys-disk">--%</span>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
-                    <div class="w-2 h-2 rounded-full bg-green-500 pulse-dot"></div>
-                    <span class="text-xs font-medium text-green-500" id="sys-status">System Online</span>
-                </div>
-                <select id="time-range" onchange="changeRange(this.value)" class="bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm rounded-lg px-3 py-1.5 outline-none focus:border-primary">
-                    <option value="1h">Last Hour</option>
-                    <option value="today" selected>Today</option>
-                    <option value="24h">Last 24h</option>
-                    <option value="7d">Last 7 Days</option>
-                    <option value="30d">Last 30 Days</option>
-                    <option value="all">All Time</option>
-                </select>
-                <button onclick="fetchData()" class="px-4 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition text-sm font-medium border border-white/10">
-                    Refresh
-                </button>
-            </div>
-        </header>
+<body class="min-h-screen p-4 md:p-6 pb-12">
+    <div id="app" class="max-w-7xl mx-auto space-y-6">
+        <!-- Auth overlay target -->
+        <div id="auth-overlay"></div>
 
-        <!-- Main Stats -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div class="glass-panel p-6 relative overflow-hidden">
-                <div class="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl"></div>
-                <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Total Tokens</h3>
-                <div class="text-3xl font-bold code-font" id="stat-tokens">0</div>
-                <p class="text-xs text-zinc-500 mt-2" id="stat-range">All time</p>
-            </div>
-            <div class="glass-panel p-6 relative overflow-hidden">
-                <div class="absolute -right-4 -top-4 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl"></div>
-                <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Total Calls</h3>
-                <div class="text-3xl font-bold code-font" id="stat-calls">0</div>
-                <p class="text-xs text-zinc-500 mt-2 text-green-400" id="stat-errors">0 errors</p>
-            </div>
-            <div class="glass-panel p-6 relative overflow-hidden">
-                <div class="absolute -right-4 -top-4 w-24 h-24 bg-green-500/10 rounded-full blur-2xl"></div>
-                <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Est. Cost</h3>
-                <div class="text-3xl font-bold code-font text-green-400" id="stat-cost">$0.00</div>
-                <p class="text-xs text-zinc-500 mt-2">Based on provider rates</p>
-            </div>
-            <div class="glass-panel p-6 relative overflow-hidden">
-                <div class="absolute -right-4 -top-4 w-24 h-24 bg-orange-500/10 rounded-full blur-2xl"></div>
-                <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Active Project</h3>
-                <div class="text-xl font-bold truncate mt-2 text-purple-400" id="stat-project">-</div>
-                <p class="text-xs text-zinc-500 mt-2" id="stat-phase">Idle</p>
-            </div>
+        <!-- Header component -->
+        <header id="header-container" class="glass-panel p-6"></header>
+
+        <!-- Navigation Tabs -->
+        <div class="flex border-b border-white/5 px-2 gap-6 overflow-x-auto custom-scrollbar whitespace-nowrap">
+            <button id="tab-btn-overview" class="nav-tab active text-zinc-400 text-sm font-semibold pb-3 outline-none">
+                Overview & Controls
+            </button>
+            <button id="tab-btn-logs" class="nav-tab text-zinc-400 text-sm font-semibold pb-3 outline-none flex items-center gap-2">
+                Live System Logs
+                <span id="logs-count-badge" class="bg-zinc-800 text-[10px] text-zinc-400 px-1.5 py-0.5 rounded-full font-bold">0</span>
+            </button>
+            <button id="tab-btn-hitl" class="nav-tab text-zinc-400 text-sm font-semibold pb-3 outline-none flex items-center gap-2">
+                HITL Gate Resolution
+                <span id="hitl-alert-dot" class="w-2 h-2 rounded-full bg-warning hidden hitl-badge-glow"></span>
+            </button>
+            <button id="tab-btn-quotas" class="nav-tab text-zinc-400 text-sm font-semibold pb-3 outline-none">
+                Provider Quotas & Audits
+            </button>
+            <button id="tab-btn-explorer" class="nav-tab text-zinc-400 text-sm font-semibold pb-3 outline-none">
+                API Calls Explorer
+            </button>
+            <button id="tab-btn-models" class="nav-tab text-zinc-400 text-sm font-semibold pb-3 outline-none">
+                Model Management
+            </button>
         </div>
 
-        <!-- Two Column Layout -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <!-- Charts Column -->
-            <div class="lg:col-span-2 space-y-6">
-                <div class="glass-panel p-6">
-                    <h3 class="text-sm font-semibold text-zinc-200 mb-4">Token Burn Rate (Last 14 Days)</h3>
-                    <div class="h-[300px] w-full">
-                        <canvas id="burnChart"></canvas>
+        <!-- Tab Content panels -->
+        <main class="space-y-6">
+            <!-- 1. OVERVIEW TAB -->
+            <div id="tab-content-overview" class="tab-content active space-y-6">
+                <!-- Main metric cards -->
+                <div id="stats-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"></div>
+
+                <!-- First Row: Charts (Burn & Model Distribution) -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Burn Chart -->
+                    <div id="burn-chart-container" class="glass-panel p-6 h-80 relative lg:col-span-2">
+                        <h3 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">Token Burn & Cost Accumulation</h3>
+                    </div>
+                    <!-- Model Distribution Chart -->
+                    <div id="model-chart-container" class="glass-panel p-6 h-80 relative lg:col-span-1">
+                        <h3 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">Model Distribution</h3>
                     </div>
                 </div>
 
-                <div class="glass-panel p-6">
-                    <h3 class="text-sm font-semibold text-zinc-200 mb-4">Fallback Activity (Provider Usage)</h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm text-zinc-400">
-                            <thead class="text-xs uppercase bg-zinc-800/50 text-zinc-300">
-                                <tr>
-                                    <th class="px-4 py-3 rounded-tl-lg">Provider</th>
-                                    <th class="px-4 py-3">Calls</th>
-                                    <th class="px-4 py-3">Tokens</th>
-                                    <th class="px-4 py-3">Errors</th>
-                                    <th class="px-4 py-3">RPM / Peak</th>
-                                    <th class="px-4 py-3 rounded-tr-lg">RPD (Daily)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="provider-table" class="divide-y divide-zinc-800/50">
-                                <!-- Populated via JS -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Column -->
-            <div class="space-y-6">
-                <!-- Live Task Feed -->
-                <div class="glass-panel p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="text-sm font-semibold text-zinc-200">Current Loop State</h3>
-                        <div class="flex gap-2">
-                            <button onclick="bridgeCmd('pause')" class="text-xs bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-2 py-1 rounded hover:bg-yellow-500/20 transition">Pause</button>
-                            <button onclick="bridgeCmd('resume')" class="text-xs bg-green-500/10 text-green-500 border border-green-500/20 px-2 py-1 rounded hover:bg-green-500/20 transition">Resume</button>
-                        </div>
-                    </div>
-                    <div class="space-y-4">
-                        <div class="p-3 bg-zinc-800/30 rounded-lg border border-zinc-700/50">
-                            <div class="text-xs text-zinc-500 uppercase font-semibold mb-1">Active Task</div>
-                            <div class="text-sm text-zinc-200" id="loop-task">Waiting for telemetry...</div>
-                        </div>
-                        <div class="p-3 bg-zinc-800/30 rounded-lg border border-zinc-700/50">
-                            <div class="text-xs text-zinc-500 uppercase font-semibold mb-1">Progress</div>
-                            <div class="flex justify-between text-sm mb-2">
-                                <span class="text-zinc-300" id="loop-progress-text">0 / 0</span>
-                                <span class="text-purple-400" id="loop-pct">0%</span>
-                            </div>
-                            <div class="w-full bg-zinc-900 rounded-full h-1.5">
-                                <div class="bg-purple-500 h-1.5 rounded-full transition-all duration-500" id="loop-progress-bar" style="width: 0%"></div>
+                <!-- Second Row: Orchestrator Loop State & Control -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Left main column: Orchestrator Loop State & Control -->
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Loop Active State details (glorified, premium view) -->
+                        <div id="loop-state-card" class="glass-panel p-6">
+                            <h3 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                                Orchestrator Run State
+                            </h3>
+                            <div class="space-y-4" id="loop-state-details">
+                                <div class="text-center text-zinc-500 py-6 text-sm">Loading active run state...</div>
                             </div>
                         </div>
-                        <div id="loop-error" class="hidden p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-                            <div class="text-xs text-red-400 uppercase font-semibold mb-1">Last Error</div>
-                            <div class="text-xs code-font text-red-300 break-words" id="loop-error-text"></div>
-                        </div>
+
+                        <!-- System control panel (starts/stops loop + HITL overview shortcut) -->
+                        <div id="commands-container" class="glass-panel p-6"></div>
+                    </div>
+                    
+                    <!-- Right column: Routing & cognitive details -->
+                    <div class="space-y-6">
+                        <!-- Routing chain & sota status -->
+                        <div id="routing-container" class="glass-panel p-6"></div>
+                        <div id="cognitive-container" class="glass-panel p-6"></div>
                     </div>
                 </div>
 
-                <!-- Cognitive Engine SOTA Metrics -->
-                <div class="glass-panel p-6">
-                    <h3 class="text-sm font-semibold text-zinc-200 mb-4 flex items-center gap-2">
-                        🧠 Cognitive Engine
-                        <span class="text-[10px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded uppercase tracking-wider font-bold">Active</span>
-                    </h3>
-                    <div class="space-y-4">
-                        <div class="flex justify-between items-center p-3 bg-zinc-800/30 rounded-lg border border-zinc-700/50">
-                            <div class="text-xs text-zinc-400">Semantic Cache Hits</div>
-                            <div class="text-lg font-bold code-font text-purple-400" id="sota-cache-hits">0</div>
-                        </div>
-                        <div class="flex justify-between items-center p-3 bg-zinc-800/30 rounded-lg border border-zinc-700/50">
-                            <div class="text-xs text-zinc-400">Est. API Cost Saved</div>
-                            <div class="text-lg font-bold code-font text-green-400" id="sota-cost-saved">$0.00</div>
-                        </div>
-                        <div class="flex justify-between items-center p-3 bg-zinc-800/30 rounded-lg border border-zinc-700/50">
-                            <div class="text-xs text-zinc-400">LoRA Distillation Samples</div>
-                            <div class="text-lg font-bold code-font text-blue-400" id="sota-distill-samples">0</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Active Fallback Chains -->
-                <div class="glass-panel p-6">
-                    <h3 class="text-sm font-semibold text-zinc-200 mb-4">Active Routing Chains</h3>
-                    <div id="routing-chain-container" class="space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                        <div class="text-xs text-zinc-500">Loading chains...</div>
-                    </div>
-                </div>
-
-                <!-- Models Distribution -->
-                <div class="glass-panel p-6">
-                    <h3 class="text-sm font-semibold text-zinc-200 mb-4">Model Distribution</h3>
-                    <div class="h-[250px] w-full flex justify-center">
-                        <canvas id="modelChart"></canvas>
-                    </div>
-                </div>
+                <!-- Bottom sections: sessions list -->
+                <div id="sessions-container" class="glass-panel p-6 h-[400px]"></div>
             </div>
-        </div>
 
-        <!-- Logs & Sessions -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-12">
-            <!-- Sessions -->
-            <div class="glass-panel p-6 flex flex-col h-[400px]">
-                <h3 class="text-sm font-semibold text-zinc-200 mb-4 flex justify-between items-center">
-                    Recent Sessions
-                    <span class="text-xs font-normal text-zinc-500 bg-zinc-800 px-2 py-1 rounded">Latest 50</span>
-                </h3>
-                <div class="overflow-y-auto flex-1 pr-2 custom-scrollbar">
-                    <div class="space-y-3" id="sessions-feed">
-                        <!-- Populated via JS -->
+            <!-- 2. LIVE SYSTEM LOGS TAB -->
+            <div id="tab-content-logs" class="tab-content">
+                <div id="logs-container" class="glass-panel p-6"></div>
+            </div>
+
+            <!-- 3. HITL GATE RESOLUTION TAB -->
+            <div id="tab-content-hitl" class="tab-content">
+                <div id="hitl-panel-container" class="glass-panel p-6 min-h-[300px] flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4">Interactive Human Gate Portal</h3>
+                        <div id="hitl-status-area" class="text-center text-zinc-500 py-12">
+                            <div class="text-4xl mb-4">🟢</div>
+                            <h4 class="text-lg font-medium text-white">System Clear</h4>
+                            <p class="text-sm text-zinc-400 mt-2 max-w-md mx-auto">The Loop Orchestrator is running autonomously. No manual authorizations or reviews are currently requested.</p>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Live API Calls -->
-            <div class="glass-panel p-6 flex flex-col h-[400px]">
-                <h3 class="text-sm font-semibold text-zinc-200 mb-4 flex justify-between items-center">
-                    Live API Calls
-                    <span class="text-xs font-normal text-zinc-500 bg-zinc-800 px-2 py-1 rounded">Latest 200</span>
-                </h3>
-                <div class="overflow-y-auto flex-1 pr-2 custom-scrollbar">
-                    <table class="w-full text-left text-sm text-zinc-400">
-                        <thead class="text-xs uppercase bg-zinc-800/50 text-zinc-300 sticky top-0 backdrop-blur-md">
-                            <tr>
-                                <th class="px-3 py-2 rounded-tl">Time</th>
-                                <th class="px-3 py-2">Model</th>
-                                <th class="px-3 py-2">Tokens</th>
-                                <th class="px-3 py-2 rounded-tr">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="calls-table" class="divide-y divide-zinc-800/50">
-                            <!-- Populated via JS -->
-                        </tbody>
-                    </table>
-                </div>
+            <!-- 4. PROVIDER QUOTAS & AUDITS TAB -->
+            <div id="tab-content-quotas" class="tab-content space-y-8">
+                <div class="glass-panel p-5" id="quota-gauges-container"></div>
+                <div class="glass-panel p-6" id="provider-table-container"></div>
             </div>
-        </div>
+
+            <!-- 5. API CALLS EXPLORER TAB -->
+            <div id="tab-content-explorer" class="tab-content glass-panel p-6 min-h-[500px]">
+                <div id="calls-container" class="h-full"></div>
+            </div>
+
+            <!-- 6. MODEL MANAGEMENT TAB -->
+            <div id="tab-content-models" class="tab-content">
+                <!-- Mounted dynamically -->
+            </div>
+
+
+        </main>
     </div>
 
-    <script>
-        let burnChart, modelChart;
-
-        function initCharts() {
-            Chart.defaults.color = '#71717a';
-            Chart.defaults.font.family = "'Inter', sans-serif";
-
-            const ctxBurn = document.getElementById('burnChart').getContext('2d');
-            burnChart = new Chart(ctxBurn, {
-                type: 'bar',
-                data: { labels: [], datasets: [] },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { type: 'linear', position: 'left', grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true },
-                        y1: { type: 'linear', position: 'right', grid: { display: false }, beginAtZero: true },
-                        x: { grid: { display: false } }
-                    },
-                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } } }
-                }
-            });
-
-            const ctxModel = document.getElementById('modelChart').getContext('2d');
-            modelChart = new Chart(ctxModel, {
-                type: 'doughnut',
-                data: { labels: [], datasets: [] },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    cutout: '75%',
-                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } } }
-                }
-            });
-        }
-
-        let currentRange = 'today';
-        function changeRange(val) { currentRange = val; fetchData(); }
-
-        async function fetchData() {
-            try {
-                const [summaryRes, bridgeRes, dailyRes, callsRes, sessionsRes, sysRes, routingRes, sotaRes] = await Promise.all([
-                    fetch('/api/summary?range=' + currentRange).then(r => r.json()).catch(() => null),
-                    fetch('/api/bridge-state').then(r => r.json()).catch(() => null),
-                    fetch('/api/daily').then(r => r.json()).catch(() => null),
-                    fetch('/api/calls?days=1').then(r => r.json()).catch(() => null),
-                    fetch('/api/sessions').then(r => r.json()).catch(() => null),
-                    fetch('/api/sysinfo').then(r => r.json()).catch(() => null),
-                    fetch('/api/routing-chain').then(r => r.json()).catch(() => null),
-                    fetch('/api/sota-stats').then(r => r.json()).catch(() => null)
-                ]);
-
-                if (summaryRes) updateSummary(summaryRes);
-                if (bridgeRes) updateBridge(bridgeRes);
-                if (dailyRes) updateDailyChart(dailyRes);
-                if (callsRes) updateCalls(callsRes);
-                if (sessionsRes) updateSessions(sessionsRes);
-                if (sysRes) updateSysinfo(sysRes);
-                if (routingRes) updateRoutingChain(routingRes);
-                if (sotaRes) updateSotaStats(sotaRes);
-
-            } catch (e) {
-                console.error("Failed to fetch data", e);
-            }
-        }
-
-        function updateSummary(s) {
-            document.getElementById('stat-tokens').textContent = new Intl.NumberFormat().format(s.total?.total_tokens || 0);
-            document.getElementById('stat-calls').textContent = new Intl.NumberFormat().format(s.total?.total_calls || 0);
-            document.getElementById('stat-errors').textContent = `${s.total?.total_errors || 0} failed calls`;
-            
-            // Render Provider Table
-            const tbody = document.getElementById('provider-table');
-            tbody.innerHTML = '';
-            if (s.byProvider) {
-                s.byProvider.forEach(p => {
-                    tbody.innerHTML += `
-                        <tr class="hover:bg-white/5 transition">
-                            <td class="px-4 py-3 font-medium text-purple-300">${p.provider}</td>
-                            <td class="px-4 py-3 code-font">${new Intl.NumberFormat().format(p.calls)}</td>
-                            <td class="px-4 py-3 text-blue-400 code-font">${new Intl.NumberFormat().format(p.tokens)}</td>
-                            <td class="px-4 py-3 text-red-400 code-font">${p.err_calls || 0}</td>
-                            <td class="px-4 py-3 text-zinc-500 text-xs">${p.rpm_peak || 0} / ${p.rpm_limit || 'N/A'}</td>
-                            <td class="px-4 py-3 text-zinc-500 text-xs">
-                                <span class="${(p.rpd_limit && p.today_ok >= p.rpd_limit * 0.9) ? 'text-red-400 font-bold' : ''}">
-                                    ${p.today_ok || 0} / ${p.rpd_limit || 'N/A'}
-                                </span>
-                            </td>
-                        </tr>
-                    `;
-                });
-            }
-
-            // Update Model Chart
-            if (s.byModel && s.byModel.length > 0) {
-                const labels = s.byModel.map(m => m.model.split('/').pop());
-                const data = s.byModel.map(m => m.calls);
-                const colors = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
-                
-                modelChart.data = {
-                    labels,
-                    datasets: [{
-                        data,
-                        backgroundColor: colors.slice(0, labels.length),
-                        borderWidth: 0
-                    }]
-                };
-                modelChart.update();
-            }
-        }
-
-        function updateBridge(b) {
-            if (b.error) return;
-            document.getElementById('stat-project').textContent = b.project || 'None';
-            document.getElementById('stat-phase').textContent = b.phase || 'Idle';
-            document.getElementById('stat-cost').textContent = `$${Number(b.cost||0).toFixed(4)}`;
-            
-            document.getElementById('loop-task').textContent = b.taskTitle || 'Waiting...';
-            
-            const total = b.tasksTotal || 0;
-            const comp = b.tasksCompleted || 0;
-            const pct = total > 0 ? Math.round((comp/total)*100) : 0;
-            
-            document.getElementById('loop-progress-text').textContent = `${comp} / ${total}`;
-            document.getElementById('loop-pct').textContent = `${pct}%`;
-            document.getElementById('loop-progress-bar').style.width = `${pct}%`;
-
-            const errDiv = document.getElementById('loop-error');
-            if (b.lastError) {
-                errDiv.classList.remove('hidden');
-                document.getElementById('loop-error-text').textContent = b.lastError;
-            } else {
-                errDiv.classList.add('hidden');
-            }
-        }
-
-        function updateDailyChart(d) {
-            const days = d.slice(0, 14).reverse();
-            burnChart.data = {
-                labels: days.map(x => x.date.slice(5)),
-                datasets: [
-                    {
-                        label: 'Tokens',
-                        data: days.map(x => x.total_tokens),
-                        backgroundColor: '#8b5cf6',
-                        yAxisID: 'y',
-                        borderRadius: 4,
-                        order: 2
-                    },
-                    {
-                        label: 'Cost ($)',
-                        data: days.map(x => x.cost),
-                        borderColor: '#10b981',
-                        backgroundColor: '#10b981',
-                        type: 'line',
-                        yAxisID: 'y1',
-                        borderWidth: 2,
-                        tension: 0.3,
-                        order: 1
-                    }
-                ]
-            };
-            burnChart.update();
-        }
-
-        function updateCalls(c) {
-            const tbody = document.getElementById('calls-table');
-            tbody.innerHTML = c.map(call => {
-                const isErr = call.status !== 'ok';
-                const statusBadge = isErr 
-                    ? `<span class="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded text-[10px] font-bold">ERR</span>`
-                    : `<span class="bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-0.5 rounded text-[10px] font-bold">OK</span>`;
-                const modelShort = call.model.split('/').pop();
-                return `
-                    <tr class="hover:bg-white/5 transition">
-                        <td class="px-3 py-2 code-font text-xs text-zinc-500">${call.ts.substring(11, 19)}</td>
-                        <td class="px-3 py-2 text-xs truncate max-w-[120px]" title="${call.model}">${modelShort}</td>
-                        <td class="px-3 py-2 code-font text-xs text-blue-400">${call.total_tokens}</td>
-                        <td class="px-3 py-2">${statusBadge}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        function updateSessions(s) {
-            const feed = document.getElementById('sessions-feed');
-            feed.innerHTML = s.map(sess => {
-                return `
-                    <div class="bg-zinc-800/30 border border-zinc-700/50 rounded-lg p-3 flex justify-between items-center">
-                        <div>
-                            <div class="text-sm font-semibold text-zinc-200">${sess.agent || 'Agent'}</div>
-                            <div class="text-xs text-zinc-500 mt-1">${sess.model.split('/').pop()}</div>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-xs text-purple-400 code-font">${new Intl.NumberFormat().format(sess.total_tokens || 0)} tk</div>
-                            <div class="text-[10px] text-zinc-500 mt-1">${sess.ts.substring(5, 16)}</div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function updateSysinfo(sys) {
-            if (!sys || sys.error) return;
-            document.getElementById('sys-cpu').textContent = sys.cpu_pct.toFixed(1) + '%';
-            const ramUsed = (sys.ram_used / 1024 / 1024 / 1024).toFixed(1);
-            const ramTotal = (sys.ram_total / 1024 / 1024 / 1024).toFixed(1);
-            document.getElementById('sys-ram').textContent = `${ramUsed} / ${ramTotal} GB`;
-            document.getElementById('sys-disk').textContent = sys.disk_pct.toFixed(1) + '%';
-        }
-
-        function updateRoutingChain(tiers) {
-            if (tiers.error) return;
-            const container = document.getElementById('routing-chain-container');
-            let html = '';
-            for (const [tierName, models] of Object.entries(tiers)) {
-                html += `<div class="mb-4 last:mb-0">`;
-                html += `<div class="text-xs font-semibold text-zinc-400 mb-2 uppercase">${tierName}</div>`;
-                html += `<div class="flex flex-col gap-1.5">`;
-                models.forEach((m, idx) => {
-                    let colorClass = 'text-zinc-500 bg-zinc-800/30 border-zinc-700/50';
-                    let icon = '⚪';
-                    let title = 'Standby';
-                    if (m.status === 'active') {
-                        colorClass = 'text-green-400 bg-green-500/10 border-green-500/30';
-                        icon = '🟢';
-                        title = 'Active';
-                    } else if (m.status === 'exhausted') {
-                        colorClass = 'text-red-400 bg-red-500/10 border-red-500/30 line-through opacity-70';
-                        icon = '🔴';
-                        title = 'Exhausted (' + (m.reason || '') + ')';
-                    }
-                    const mName = m.model.split('/').pop();
-                    html += '<div class="flex items-center gap-2 text-[11px] code-font border px-2 py-1.5 rounded-md ' + colorClass + '" title="' + title + '">' +
-                        '<span>' + icon + '</span>' +
-                        '<span class="truncate">' + (idx + 1) + '. ' + mName + '</span>' +
-                    '</div>';
-                });
-                html += `</div></div>`;
-            }
-            container.innerHTML = html;
-        }
-
-        function updateSotaStats(s) {
-            if (!s || s.error) return;
-            document.getElementById('sota-cache-hits').textContent = new Intl.NumberFormat().format(s.cache_hits || 0);
-            document.getElementById('sota-cost-saved').textContent = '$' + Number(s.cost_saved||0).toFixed(4);
-            document.getElementById('sota-distill-samples').textContent = new Intl.NumberFormat().format(s.distillation_samples || 0);
-        }
-
-        async function bridgeCmd(cmd) {
-            try {
-                await fetch('/api/bridge-cmd', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cmd })
-                });
-                setTimeout(fetchData, 500);
-            } catch (e) {
-                alert("Failed to send command");
-            }
-        }
-
-        try { initCharts(); } catch(e) { console.warn('Charts init failed:', e); }
-        fetchData();
-        setInterval(fetchData, 5000); // Auto refresh every 5s
-    </script>
+    <!-- Application initialization script -->
+    <script type="module" src="/js/app.mjs"></script>
 </body>
 </html>

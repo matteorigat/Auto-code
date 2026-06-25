@@ -1,54 +1,118 @@
-general_settings:
-
 model_list:
-  # ─── TIER 4: PLANNER (Planning, Discover, Design, SDD/PRD reading) ───
+  # ═══════════════════════════════════════════════════════════════
+  # TIER 4: PLANNER  (PLAN, DISCOVER — complex reasoning, design)
+  # ═══════════════════════════════════════════════════════════════
   - model_name: openai/tier-4-planner
     litellm_params:
-      model: openrouter/anthropic/claude-sonnet-4
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 5
-    model_info:
-      mode: completion
-      max_input_tokens: 200000
-      description: "Complex planning & high-level coding"
-
-  - model_name: openai/tier-4-planner-fb1
-    litellm_params:
-      model: openrouter/deepseek/deepseek-v4-flash:free
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 3
-    model_info:
-      mode: completion
-      max_input_tokens: 900000
-
-  - model_name: openai/tier-4-planner-fb2
-    litellm_params:
-      model: openrouter/qwen/qwen3-coder:free
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 3
-    model_info:
-      mode: completion
-      max_input_tokens: 900000
-
-  - model_name: openai/tier-4-planner-fb3
-    litellm_params:
-      model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 3
+      model: openai/big-pickle
+      api_key: os.environ/OPENCODE_API_KEY
+      api_base: https://zen.opencode.ai/v1
+      rpm: 10
     model_info:
       mode: completion
       max_input_tokens: 128000
+      provider: opencode_zen
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
+
+  - model_name: openai/tier-4-planner-fb1
+    litellm_params:
+      model: openai/nemotron-3-ultra
+      api_key: os.environ/OPENCODE_API_KEY
+      api_base: https://zen.opencode.ai/v1
+      rpm: 10
+    model_info:
+      mode: completion
+      max_input_tokens: 128000
+      provider: opencode_zen
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
+
+  - model_name: openai/tier-4-planner-fb2
+    litellm_params:
+      model: openrouter/owl-alpha
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      rpm: 3
+    model_info:
+      mode: completion
+      max_input_tokens: 1000000
+      provider: openrouter
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 1000000
+
+  - model_name: openai/tier-4-planner-fb3
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v4-flash:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      rpm: 3
+    model_info:
+      mode: completion
+      max_input_tokens: 1000000
+      provider: openrouter
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 1000000
 
   - model_name: openai/tier-4-planner-fb4
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      rpm: 2
+    model_info:
+      mode: completion
+      max_input_tokens: 1000000
+      provider: openrouter
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 1000000
+
+  - model_name: openai/tier-4-planner-fb5
+    litellm_params:
+      model: openai/kilo-auto/free
+      api_key: os.environ/KILOCODE_API_KEY
+      api_base: https://api.kilo.chat/v1
+      rpm: 10
+    model_info:
+      mode: completion
+      max_input_tokens: 128000
+      provider: kilo
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
+
+  - model_name: openai/tier-4-planner-fb6
+    litellm_params:
+      model: mistral/devstral-2512
+      api_key: os.environ/MISTRAL_API_KEY
+      rpm: 10
+    model_info:
+      mode: completion
+      max_input_tokens: 128000
+      provider: mistral
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
+
+  - model_name: openai/tier-4-planner-fb7
     litellm_params:
       model: mistral/mistral-large-2512
       api_key: os.environ/MISTRAL_API_KEY
       rpm: 10
     model_info:
       mode: completion
-      max_input_tokens: 128000
+      max_input_tokens: 256000
+      provider: mistral
+      input_cost_per_token: 0.0000005
+      output_cost_per_token: 0.0000015
+      context_window: 256000
 
-  - model_name: openai/tier-4-planner-fb5
+  - model_name: openai/tier-4-planner-fb8
     litellm_params:
       model: mistral/mistral-medium-3-5
       api_key: os.environ/MISTRAL_API_KEY
@@ -56,28 +120,57 @@ model_list:
     model_info:
       mode: completion
       max_input_tokens: 128000
+      provider: mistral
+      input_cost_per_token: 0.0000004
+      output_cost_per_token: 0.0000012
+      context_window: 128000
 
-  - model_name: openai/tier-4-planner-fb6
+  - model_name: openai/tier-4-planner-fb9
     litellm_params:
-      model: openrouter/openrouter/owl-alpha
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 4
+      model: openai/z-ai/glm-5.1
+      api_key: os.environ/NVIDIA_API_KEY
+      api_base: https://integrate.api.nvidia.com/v1
+      rpm: 10
     model_info:
       mode: completion
-      max_input_tokens: 900000
+      max_input_tokens: 128000
+      provider: nvidia
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
 
-  # ─── TIER 3: BUILDER (Coding, patch, refactor, feature implementation) ───
+  - model_name: openai/tier-4-planner-fb10
+    litellm_params:
+      model: openai/deepseek-ai/deepseek-v4-pro
+      api_key: os.environ/NVIDIA_API_KEY
+      api_base: https://integrate.api.nvidia.com/v1
+      rpm: 10
+    model_info:
+      mode: completion
+      max_input_tokens: 1000000
+      provider: nvidia
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 1000000
+
+  - model_name: openai/tier-4-planner-fb11
+    litellm_params:
+      model: openai/deepseek-ai/deepseek-v4-flash
+      api_key: os.environ/NVIDIA_API_KEY
+      api_base: https://integrate.api.nvidia.com/v1
+      rpm: 10
+    model_info:
+      mode: completion
+      max_input_tokens: 1000000
+      provider: nvidia
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 1000000
+
+  # ═══════════════════════════════════════════════════════════════
+  # TIER 3: BUILDER  (EXEC, SWARM — coding, refactor, tool use)
+  # ═══════════════════════════════════════════════════════════════
   - model_name: openai/tier-3-builder
-    litellm_params:
-      model: openrouter/anthropic/claude-haiku-4-5
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 8
-    model_info:
-      mode: completion
-      max_input_tokens: 200000
-      description: "Standard builders & QA"
-
-  - model_name: openai/tier-3-builder-fb1
     litellm_params:
       model: mistral/codestral-2508
       api_key: os.environ/MISTRAL_API_KEY
@@ -85,8 +178,123 @@ model_list:
     model_info:
       mode: completion
       max_input_tokens: 256000
+      provider: mistral
+      input_cost_per_token: 0.0000003
+      output_cost_per_token: 0.0000009
+      context_window: 256000
+
+  - model_name: openai/tier-3-builder-fb1
+    litellm_params:
+      model: openrouter/qwen/qwen3-coder:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      rpm: 3
+    model_info:
+      mode: completion
+      max_input_tokens: 1000000
+      provider: openrouter
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 1000000
 
   - model_name: openai/tier-3-builder-fb2
+    litellm_params:
+      model: openrouter/poolside/laguna-m.1:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      rpm: 2
+    model_info:
+      mode: completion
+      max_input_tokens: 262000
+      provider: openrouter
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 262000
+
+  - model_name: openai/tier-3-builder-fb3
+    litellm_params:
+      model: groq/compound
+      api_key: os.environ/GROQ_API_KEY
+      rpm: 30
+    model_info:
+      mode: completion
+      max_input_tokens: 128000
+      provider: groq
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
+
+  - model_name: openai/tier-3-builder-fb4
+    litellm_params:
+      model: openai/deepseek-v4-flash
+      api_key: os.environ/OPENCODE_API_KEY
+      api_base: https://zen.opencode.ai/v1
+      rpm: 10
+    model_info:
+      mode: completion
+      max_input_tokens: 128000
+      provider: opencode_zen
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
+
+  - model_name: openai/tier-3-builder-fb5
+    litellm_params:
+      model: openai/mimo-v2.5
+      api_key: os.environ/OPENCODE_API_KEY
+      api_base: https://zen.opencode.ai/v1
+      rpm: 10
+    model_info:
+      mode: completion
+      max_input_tokens: 128000
+      provider: opencode_zen
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
+
+  - model_name: openai/tier-3-builder-fb6
+    litellm_params:
+      model: openrouter/nex-agi/nex-n2-pro:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      rpm: 10
+    model_info:
+      mode: completion
+      max_input_tokens: 262000
+      provider: openrouter
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 262000
+
+  - model_name: openai/tier-3-builder-fb7
+    litellm_params:
+      model: openrouter/minimax/minimax-m2.5:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      rpm: 2
+    model_info:
+      mode: completion
+      max_input_tokens: 205000
+      provider: openrouter
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 205000
+
+  - model_name: openai/tier-3-builder-fb8
+    litellm_params:
+      model: openrouter/moonshotai/kimi-k2.6:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      rpm: 2
+    model_info:
+      mode: completion
+      max_input_tokens: 262000
+      provider: openrouter
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 262000
+
+  - model_name: openai/tier-3-builder-fb9
     litellm_params:
       model: mistral/mistral-small-2603
       api_key: os.environ/MISTRAL_API_KEY
@@ -94,55 +302,56 @@ model_list:
     model_info:
       mode: completion
       max_input_tokens: 128000
+      provider: mistral
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.0000006
+      context_window: 128000
 
-  - model_name: openai/tier-3-builder-fb3
+  - model_name: openai/tier-3-builder-fb10
     litellm_params:
-      model: openrouter/qwen/qwen3-coder:free
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 4
-    model_info:
-      mode: completion
-      max_input_tokens: 900000
-
-  - model_name: openai/tier-3-builder-fb4
-    litellm_params:
-      model: openrouter/poolside/laguna-m.1:free
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 4
-    model_info:
-      mode: completion
-      max_input_tokens: 128000
-
-  - model_name: openai/tier-3-builder-fb5
-    litellm_params:
-      model: openrouter/minimax/minimax-m2.5:free
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 3
-    model_info:
-      mode: completion
-      max_input_tokens: 900000
-
-  - model_name: openai/tier-3-builder-fb6
-    litellm_params:
-      model: openrouter/moonshotai/kimi-k2.6:free
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 3
-    model_info:
-      mode: completion
-      max_input_tokens: 900000
-
-  # ─── TIER 2: HUNTER (Bug hunting, fix, QA with logs/stack trace) ───
-  - model_name: openai/tier-2-hunter
-    litellm_params:
-      model: openrouter/anthropic/claude-haiku-4-5
-      api_key: os.environ/OPENROUTER_API_KEY
+      model: openai/minimaxai/minimax-m2.7
+      api_key: os.environ/NVIDIA_API_KEY
+      api_base: https://integrate.api.nvidia.com/v1
       rpm: 10
     model_info:
       mode: completion
-      max_input_tokens: 200000
-      description: "Bug hunter & discovery"
+      max_input_tokens: 128000
+      provider: nvidia
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
+
+  # ═══════════════════════════════════════════════════════════════
+  # TIER 2: HUNTER  (FIX, QA — bug hunting, log analysis, debugging)
+  # ═══════════════════════════════════════════════════════════════
+  - model_name: openai/tier-2-hunter
+    litellm_params:
+      model: groq/qwen/qwen3-32b
+      api_key: os.environ/GROQ_API_KEY
+      rpm: 60
+    model_info:
+      mode: completion
+      max_input_tokens: 128000
+      provider: groq
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
 
   - model_name: openai/tier-2-hunter-fb1
+    litellm_params:
+      model: openrouter/openai/gpt-oss-120b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      rpm: 10
+    model_info:
+      mode: completion
+      max_input_tokens: 131000
+      provider: openrouter
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 131000
+
+  - model_name: openai/tier-2-hunter-fb2
     litellm_params:
       model: groq/meta-llama/llama-4-scout-17b-16e-instruct
       api_key: os.environ/GROQ_API_KEY
@@ -150,141 +359,192 @@ model_list:
     model_info:
       mode: completion
       max_input_tokens: 128000
+      provider: groq
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
 
-  - model_name: openai/tier-2-hunter-fb2
+  - model_name: openai/tier-2-hunter-fb3
     litellm_params:
-      model: groq/qwen/qwen3-32b
+      model: groq/openai/gpt-oss-120b
       api_key: os.environ/GROQ_API_KEY
       rpm: 30
     model_info:
       mode: completion
       max_input_tokens: 128000
-
-  - model_name: openai/tier-2-hunter-fb3
-    litellm_params:
-      model: mistral/ministral-8b-2512
-      api_key: os.environ/MISTRAL_API_KEY
-      rpm: 30
-    model_info:
-      mode: completion
-      max_input_tokens: 128000
+      provider: groq
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
 
   - model_name: openai/tier-2-hunter-fb4
     litellm_params:
-      model: openrouter/openai/gpt-oss-120b:free
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 3
+      model: mistral/ministral-14b-2512
+      api_key: os.environ/MISTRAL_API_KEY
+      rpm: 10
     model_info:
       mode: completion
-      max_input_tokens: 65536
+      max_input_tokens: 128000
+      provider: mistral
+      input_cost_per_token: 0.0000002
+      output_cost_per_token: 0.0000002
+      context_window: 128000
 
   - model_name: openai/tier-2-hunter-fb5
     litellm_params:
-      model: openrouter/openrouter/free
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 4
+      model: openai/north-mini-code-free
+      api_key: os.environ/OPENCODE_API_KEY
+      api_base: https://zen.opencode.ai/v1
+      rpm: 10
     model_info:
       mode: completion
       max_input_tokens: 128000
+      provider: opencode_zen
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
 
-  # ─── OPENCODE INTERNAL: title agent uses hardcoded gpt-5-nano ───
-  - model_name: gpt-5-nano
+  - model_name: openai/tier-2-hunter-fb6
     litellm_params:
-      model: openai/gpt-4o-mini
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 20
+      model: openai/gpt-oss-120b
+      api_key: os.environ/CEREBRAS_API_KEY
+      api_base: https://api.cerebras.ai/v1
+      rpm: 5
     model_info:
-      mode: chat
-      max_input_tokens: 128000
-      description: "Alias for opencode internal title agent"
+      mode: completion
+      max_input_tokens: 65536
+      provider: cerebras
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 65536
 
-  - model_name: gpt-5-nano-fb1
+  # ═══════════════════════════════════════════════════════════════
+  # TIER 1: TRIVIAL  (COMMIT, SYNC, IDLE — summaries, titles, small diffs)
+  # ═══════════════════════════════════════════════════════════════
+  - model_name: openai/tier-1-trivial
     litellm_params:
       model: groq/llama-3.1-8b-instant
       api_key: os.environ/GROQ_API_KEY
       rpm: 30
     model_info:
-      mode: chat
-      max_input_tokens: 128000
-
-  - model_name: gpt-5-nano-fb2
-    litellm_params:
-      model: openrouter/openrouter/free
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 5
-    model_info:
-      mode: chat
-      max_input_tokens: 128000
-
-  # ─── TIER 1: TRIVIAL (Commit messages, summary, sync, idle, small diffs) ───
-  - model_name: openai/tier-1-trivial
-    litellm_params:
-      model: openrouter/anthropic/claude-haiku-4-5
-      api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 20
-    model_info:
       mode: completion
-      max_input_tokens: 200000
-      description: "Trivial & fast tasks"
+      max_input_tokens: 128000
+      provider: groq
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
 
   - model_name: openai/tier-1-trivial-fb1
     litellm_params:
       model: mistral/ministral-3b-2512
       api_key: os.environ/MISTRAL_API_KEY
-      rpm: 50
+      rpm: 30
     model_info:
       mode: completion
       max_input_tokens: 128000
+      provider: mistral
+      input_cost_per_token: 0.0000001
+      output_cost_per_token: 0.0000001
+      context_window: 128000
 
   - model_name: openai/tier-1-trivial-fb2
     litellm_params:
-      model: mistral/ministral-8b-2512
-      api_key: os.environ/MISTRAL_API_KEY
-      rpm: 30
+      model: groq/qwen/qwen3-32b
+      api_key: os.environ/GROQ_API_KEY
+      rpm: 60
     model_info:
       mode: completion
       max_input_tokens: 128000
+      provider: groq
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
 
   - model_name: openai/tier-1-trivial-fb3
     litellm_params:
-      model: groq/llama-3.1-8b-instant
-      api_key: os.environ/GROQ_API_KEY
-      rpm: 30
+      model: mistral/ministral-8b-2512
+      api_key: os.environ/MISTRAL_API_KEY
+      rpm: 15
     model_info:
       mode: completion
       max_input_tokens: 128000
+      provider: mistral
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.00000015
+      context_window: 128000
 
   - model_name: openai/tier-1-trivial-fb4
     litellm_params:
-      model: groq/qwen/qwen3-32b
-      api_key: os.environ/GROQ_API_KEY
-      rpm: 30
-    model_info:
-      mode: completion
-      max_input_tokens: 128000
-
-  - model_name: openai/tier-1-trivial-fb5
-    litellm_params:
       model: openrouter/openrouter/free
       api_key: os.environ/OPENROUTER_API_KEY
-      rpm: 4
+      api_base: https://openrouter.ai/api/v1
+      rpm: 10
     model_info:
       mode: completion
       max_input_tokens: 128000
+      provider: openrouter
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      context_window: 128000
+
 
 router_settings:
   routing_strategy: usage-based-routing-v2
   num_retries: 2
-  allowed_fails: 1
+  allowed_fails: 2
   cooldown_time: 60
   fallbacks:
-    - "openai/tier-4-planner": ["openai/tier-4-planner-fb1", "openai/tier-4-planner-fb2", "openai/tier-4-planner-fb3", "openai/tier-4-planner-fb4", "openai/tier-4-planner-fb5", "openai/tier-4-planner-fb6"]
-    - "openai/tier-3-builder": ["openai/tier-3-builder-fb1", "openai/tier-3-builder-fb2", "openai/tier-3-builder-fb3", "openai/tier-3-builder-fb4", "openai/tier-3-builder-fb5", "openai/tier-3-builder-fb6"]
-    - "openai/tier-2-hunter": ["openai/tier-2-hunter-fb1", "openai/tier-2-hunter-fb2", "openai/tier-2-hunter-fb3", "openai/tier-2-hunter-fb4", "openai/tier-2-hunter-fb5"]
-    - "openai/tier-1-trivial": ["openai/tier-1-trivial-fb1", "openai/tier-1-trivial-fb2", "openai/tier-1-trivial-fb3", "openai/tier-1-trivial-fb4", "openai/tier-1-trivial-fb5"]
-    - "gpt-5-nano": ["gpt-5-nano-fb1", "gpt-5-nano-fb2"]
-
+    - "openai/tier-4-planner":
+        [
+          "openai/tier-4-planner-fb1",
+          "openai/tier-4-planner-fb2",
+          "openai/tier-4-planner-fb3",
+          "openai/tier-4-planner-fb4",
+          "openai/tier-4-planner-fb5",
+          "openai/tier-4-planner-fb6",
+          "openai/tier-4-planner-fb7",
+          "openai/tier-4-planner-fb8",
+          "openai/tier-4-planner-fb9",
+          "openai/tier-4-planner-fb10",
+          "openai/tier-4-planner-fb11",
+        ]
+    - "openai/tier-3-builder":
+        [
+          "openai/tier-3-builder-fb1",
+          "openai/tier-3-builder-fb2",
+          "openai/tier-3-builder-fb3",
+          "openai/tier-3-builder-fb4",
+          "openai/tier-3-builder-fb5",
+          "openai/tier-3-builder-fb6",
+          "openai/tier-3-builder-fb7",
+          "openai/tier-3-builder-fb8",
+          "openai/tier-3-builder-fb9",
+          "openai/tier-3-builder-fb10",
+        ]
+    - "openai/tier-2-hunter":
+        [
+          "openai/tier-2-hunter-fb1",
+          "openai/tier-2-hunter-fb2",
+          "openai/tier-2-hunter-fb3",
+          "openai/tier-2-hunter-fb4",
+          "openai/tier-2-hunter-fb5",
+          "openai/tier-2-hunter-fb6",
+        ]
+    - "openai/tier-1-trivial":
+        [
+          "openai/tier-1-trivial-fb1",
+          "openai/tier-1-trivial-fb2",
+          "openai/tier-1-trivial-fb3",
+          "openai/tier-1-trivial-fb4",
+        ]
 litellm_settings:
   drop_params: true
-  set_verbose: false
+  set_verbose: true
   cache: false
+  request_timeout: 120
+
+general_settings:
+  background_health_checks: false
+  health_check_interval: 30
+  enable_health_check_routing: true
+  health_check_ignore_transient_errors: true

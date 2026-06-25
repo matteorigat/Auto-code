@@ -1,7 +1,8 @@
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { AstIndexer } from "./ast-indexer.mjs";
-import { pipeline, cos_sim } from "@xenova/transformers";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { EmbeddingService } from './embedding-service.mjs';
+import { cos_sim } from '@xenova/transformers';
+import { AstIndexer } from './ast-indexer.mjs';
 
 /**
  * HybridSearch
@@ -11,7 +12,7 @@ import { pipeline, cos_sim } from "@xenova/transformers";
 export class HybridSearch {
   constructor(projectPath) {
     this.projectPath = projectPath;
-    this.indexPath = join(projectPath, ".hydra", "hybrid-index.json");
+    this.indexPath = join(projectPath, '.hydra', 'hybrid-index.json');
     this.indexer = new AstIndexer(projectPath);
     this.documents = []; // Array of { id, chunk, tf, embedding }
     this.termFrequencies = new Map();
@@ -20,29 +21,23 @@ export class HybridSearch {
     this.loadIndex();
   }
 
-  async initPipeline() {
-    if (!this.extractor) {
-      this.extractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
-        quantized: true, // Uses 8-bit quantized model for extreme efficiency
-      });
-    }
-  }
-
   async getEmbedding(text) {
-    await this.initPipeline();
-    const output = await this.extractor(text, { pooling: "mean", normalize: true });
-    return Array.from(output.data);
+    return await EmbeddingService.getEmbedding(text);
   }
 
   tokenize(text) {
     if (!text) return [];
-    return text.toLowerCase().replace(/[^a-z0-9_]/g, " ").split(/\s+/).filter(t => t.length > 2);
+    return text
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, ' ')
+      .split(/\s+/)
+      .filter((t) => t.length > 2);
   }
 
   loadIndex() {
     try {
       if (existsSync(this.indexPath)) {
-        const data = JSON.parse(readFileSync(this.indexPath, "utf-8"));
+        const data = JSON.parse(readFileSync(this.indexPath, 'utf-8'));
         this.documents = data.documents || [];
         for (const doc of this.documents) {
           if (doc.tfObj) {
@@ -64,14 +59,16 @@ export class HybridSearch {
   saveIndex() {
     try {
       // Convert Maps to objects for JSON serialization
-      const docsToSave = this.documents.map(d => ({
+      const docsToSave = this.documents.map((d) => ({
         id: d.id,
         chunk: d.chunk,
         tfObj: Object.fromEntries(d.tf),
-        embedding: d.embedding
+        embedding: d.embedding,
       }));
       writeFileSync(this.indexPath, JSON.stringify({ documents: docsToSave }));
-    } catch {}
+    } catch (e) {
+      console.error('Ignored error:', e.message);
+    }
   }
 
   /**
@@ -85,11 +82,12 @@ export class HybridSearch {
 
     let processed = 0;
     for (const file of files) {
-      if (file.includes("node_modules") || file.includes(".git") || file.includes(".hydra")) continue;
+      if (file.includes('node_modules') || file.includes('.git') || file.includes('.hydra'))
+        continue;
       const chunks = await this.indexer.chunkFile(file);
       for (const chunk of chunks) {
-        const fullText = chunk.name + " " + chunk.content;
-        
+        const fullText = chunk.name + ' ' + chunk.content;
+
         // 1. Lexical BM25 Tokens
         const tokens = this.tokenize(fullText);
         const tf = new Map();
@@ -99,15 +97,15 @@ export class HybridSearch {
         for (const t of tf.keys()) {
           this.docFrequencies.set(t, (this.docFrequencies.get(t) || 0) + 1);
         }
-        
+
         // 2. Semantic Embedding
         const embedding = await this.getEmbedding(fullText);
-        
+
         this.documents.push({
           id: `${chunk.file}#${chunk.startLine}`,
           chunk,
           tf,
-          embedding
+          embedding,
         });
         processed++;
       }
@@ -121,23 +119,25 @@ export class HybridSearch {
    */
   async search(query, topK = 5) {
     if (!query || !this.documents.length) return [];
-    
+
     // 1. BM25 Scoring
     const qTokens = this.tokenize(query);
     const N = this.documents.length;
-    
-    const bm25Scores = this.documents.map((doc, index) => {
-      let score = 0;
-      for (const qt of qTokens) {
-        const f = doc.tf.get(qt) || 0;
-        if (f > 0) {
-          const df = this.docFrequencies.get(qt) || 1;
-          const idf = Math.log((N - df + 0.5) / (df + 0.5) + 1);
-          score += idf * ((f * 2.5) / (f + 1.5));
+
+    const bm25Scores = this.documents
+      .map((doc, index) => {
+        let score = 0;
+        for (const qt of qTokens) {
+          const f = doc.tf.get(qt) || 0;
+          if (f > 0) {
+            const df = this.docFrequencies.get(qt) || 1;
+            const idf = Math.log((N - df + 0.5) / (df + 0.5) + 1);
+            score += idf * ((f * 2.5) / (f + 1.5));
+          }
         }
-      }
-      return { docIndex: index, score };
-    }).sort((a, b) => b.score - a.score);
+        return { docIndex: index, score };
+      })
+      .sort((a, b) => b.score - a.score);
 
     // Create BM25 Ranks
     const bm25Ranks = new Map();
@@ -147,10 +147,12 @@ export class HybridSearch {
 
     // 2. Vector Semantic Scoring
     const qEmbedding = await this.getEmbedding(query);
-    const vectorScores = this.documents.map((doc, index) => {
-      const score = doc.embedding ? cos_sim(qEmbedding, doc.embedding) : 0;
-      return { docIndex: index, score };
-    }).sort((a, b) => b.score - a.score);
+    const vectorScores = this.documents
+      .map((doc, index) => {
+        const score = doc.embedding ? cos_sim(qEmbedding, doc.embedding) : 0;
+        return { docIndex: index, score };
+      })
+      .sort((a, b) => b.score - a.score);
 
     // Create Vector Ranks
     const vectorRanks = new Map();
@@ -163,14 +165,12 @@ export class HybridSearch {
     const finalScores = this.documents.map((doc, index) => {
       const rankBM25 = bm25Ranks.get(index) || N;
       const rankVector = vectorRanks.get(index) || N;
-      const rrfScore = (1 / (K_RRF + rankBM25)) + (1 / (K_RRF + rankVector));
+      const rrfScore = 1 / (K_RRF + rankBM25) + 1 / (K_RRF + rankVector);
       return { doc, score: rrfScore, rankBM25, rankVector };
     });
 
     finalScores.sort((a, b) => b.score - a.score);
 
-    return finalScores
-      .slice(0, topK)
-      .map(s => s.doc.chunk);
+    return finalScores.slice(0, topK).map((s) => s.doc.chunk);
   }
 }

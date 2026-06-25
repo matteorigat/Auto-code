@@ -5,9 +5,9 @@ export async function handleSync(context) {
   await tasks.loadTasks(); // Ensure tasks are loaded
   const taskId = state.get().currentTaskId;
   const task = tasks._tasks.find((t) => String(t.id) === String(taskId));
-  
+
   if (task) {
-    updateStatus({ phase: "SYNC", taskTitle: task.title, taskId });
+    updateStatus({ phase: 'SYNC', taskTitle: task.title, taskId });
     if (notion && notion.isReady()) {
       try {
         log(`[SYNC] Pushing task ${taskId} progress to Notion`);
@@ -19,8 +19,8 @@ export async function handleSync(context) {
   }
 
   // Go back to IDLE to process next task
-  stream.emit("System", "system", { 
-    action: "PhaseChange", 
-    phase: "IDLE"
+  stream.emit('System', 'system', {
+    action: 'PhaseChange',
+    phase: 'IDLE',
   });
 }

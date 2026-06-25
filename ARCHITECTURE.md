@@ -535,8 +535,24 @@ Key architectural patterns:
 | `MODAL_TOKEN_SECRET` | No | — | Modal Token Secret |
 | `MODAL_WORKSPACE_TOKEN` | No | — | Modal Workspace Token |
 | `OLLAMA_API_KEY` | No | — | API key for Ollama models |
+| `OLLAMA_API_KEY` | No | — | API key for Ollama models |
 
-## 10. Anti-Patterns We Avoid
+## 10. Dashboard & Telemetry Architecture
+
+The system includes a real-time reactive dashboard backed by a structured telemetry event bus. This decouples visualization from core logic and allows the dashboard to function asynchronously without reloading.
+
+### Telemetry Pipeline
+1. **Producers**: Components (`loop-manager`, `runtime`, `quality-gate`, `safety`, `litellm_logger`) use `TelemetryClient` (`src/dashboard/telemetry-client.mjs`) to emit structured JSON events.
+2. **Buffer/Transport**: `TelemetryClient` batches events and transmits them over HTTP (`POST /api/internal/telemetry`) to the dashboard backend.
+3. **Ingestion & Persistence**: `TelemetryStore` normalizes events and passes them to `MetricsCollector`, which inserts them into an SQLite table (`events`) using sortable `uuidv7` primary keys.
+4. **Real-time Broadcast**: `TelemetryStore` caches the live snapshot (latest bridge state, stats) and broadcasts new events instantly via WebSocket (`ws.mjs`) to all connected frontend clients.
+
+### Frontend Component Model
+- The frontend (`dashboard/js/`) is a modular architecture using vanilla ES modules.
+- `AppState` acts as a reactive store. It buffers incoming WebSocket events and notifies subscribed components.
+- UI components (e.g., `logs.mjs`, `timeline.mjs`, `stats.mjs`) mount directly to DOM containers, read from `AppState`, and incrementally update the UI without replacing full parent `innerHTML` arrays, ensuring high performance.
+
+## 11. Anti-Patterns We Avoid
 
 | Anti-Pattern | Our Replacement |
 |---|---|
@@ -551,7 +567,7 @@ Key architectural patterns:
 | Spec as static document | SDD artifacts (CONSTITUTION, PRODUCT-SPEC, TECHNICAL-SPEC, PLAN.md) sono viventi: aggiornati da project-planner, task-planner, builder a ogni ciclo |
 | Code without tests | SDD impone test-first: task-planner scrive test, builder implementa per farli passare. QA gate li esegue. |
 
-## 11. Known Architectural Gaps
+## 12. Known Architectural Gaps
 
 | Gap | Impact | Priority |
 |-----|--------|----------|
@@ -565,9 +581,9 @@ Key architectural patterns:
 | **No QA build step per default** | `build` check non è required — non garantisce che il progetto sia compilabile sempre | Low |
 | **No per-project auto-resume via Telegram** | Resume signal per progetto è file-based — manca automazione callback Telegram | Low |
 
-## 12. Data Flow Diagrams
+## 13. Data Flow Diagrams
 
-### 12.1 Notion → Loop → Progetto
+### 13.1 Notion → Loop → Progetto
 
 ```
 Notion Database
@@ -587,7 +603,7 @@ Notion Database
          (status: completed/blocked/idle)
 ```
 
-### 12.2 File-Based Memory Chain
+### 13.2 File-Based Memory Chain
 
 ```
 Ogni task fresh session riceve:
@@ -604,7 +620,7 @@ Ogni task fresh session riceve:
   package.json ───── dipendenze e script
 ```
 
-## 13. File Relationships
+## 14. File Relationships
 
 ```
 index.mjs (entry)

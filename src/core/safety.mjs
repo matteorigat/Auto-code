@@ -5,9 +5,11 @@
  * Inspired by OpenHands Security Analyzer + Temporal idempotency.
  */
 
-import { execSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import config from '../config/index.mjs';
+import { getAppBus } from './app-bus.mjs';
 
 const COST_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_COST = 10; // USD
@@ -21,49 +23,74 @@ export class Safety {
     this._circuitOpen = false;
     this._lastCost = 0; // Track last cost to calculate deltas
     this._lastTokens = 0; // Track last tokens to calculate deltas
-    
+
     // SOTA Phase 2: Force container execution
-    this.forceContainerExecution = true; 
+    this.forceContainerExecution = true;
   }
 
   /* ─── Docker Sandbox Guard ─── */
 
+  /**
+   * Run command safely within a Docker sandbox if available.
+   * @param {string} taskId
+   * @param {string} command
+   * @param {string} workspacePath
+   * @returns {Promise<{stdout: string, stderr: string, code: number}>}
+   */
   async runSafeCommand(taskId, command, workspacePath) {
     let dockerAvailable = false;
     try {
-      execSync("docker ps", { stdio: "ignore" });
+      execFileSync('docker', ['ps'], { stdio: 'ignore' });
       dockerAvailable = true;
-    } catch {}
+    } catch (e) {
+      console.error('Ignored error:', e.message);
+    }
 
     if (this.forceContainerExecution && dockerAvailable) {
-      const { getDockerController } = await import("../../agents/docker-runtime.mjs");
+      const { getDockerController } = await import('../services/docker-sandbox.mjs');
       const controller = getDockerController(this.projectPath);
       try {
         await controller.startSandbox(taskId, workspacePath);
         return await controller.execute(taskId, command);
+      } catch (err) {
+        console.warn(
+          `[Safety] Docker sandbox execution failed (${err.message}). Falling back to direct host execution.`,
+        );
       } finally {
         try {
           controller.stopSandbox(taskId);
-        } catch {}
+        } catch (e) {
+          console.error('Ignored error:', e.message);
+        }
       }
-    } else {
-      console.warn(`[Safety] WARNING: Running command on host. Docker available: ${dockerAvailable}.`);
-      try {
-        const out = execSync(command, { cwd: workspacePath || this.projectPath, shell: "/bin/bash", timeout: 300000 }).toString();
-        return { exitCode: 0, stdout: out, stderr: "" };
-      } catch (e) {
-        return { exitCode: e.status || 1, stdout: e.stdout?.toString() || "", stderr: e.stderr?.toString() || e.message };
-      }
+    }
+
+    console.warn(
+      `[Safety] WARNING: Running command on host. Docker available: ${dockerAvailable}.`,
+    );
+    try {
+      const out = execFileSync('/bin/bash', ['-c', command], {
+        cwd: workspacePath || this.projectPath,
+        timeout: 300000,
+        encoding: 'utf-8',
+      });
+      return { exitCode: 0, stdout: out, stderr: '' };
+    } catch (e) {
+      return {
+        exitCode: e.status || 1,
+        stdout: e.stdout?.toString() || '',
+        stderr: e.stderr?.toString() || e.message,
+      };
     }
   }
 
   _costLogPath() {
-    return join(this.projectPath, ".hydra", "cost-log.json");
+    return join(this.projectPath, '.hydra', 'cost-log.json');
   }
 
   _loadCostLog() {
     try {
-      return JSON.parse(readFileSync(this._costLogPath(), "utf-8"));
+      return JSON.parse(readFileSync(this._costLogPath(), 'utf-8'));
     } catch {
       return [];
     }
@@ -72,7 +99,9 @@ export class Safety {
   _saveCostLog() {
     try {
       writeFileSync(this._costLogPath(), JSON.stringify(this._costLog));
-    } catch {}
+    } catch (e) {
+      console.error('Failed to write file:', e.message);
+    }
   }
 
   /* ─── Git snapshot (rollback target) ─── */
@@ -80,34 +109,51 @@ export class Safety {
   snapshotBeforeWork(storyId, cwd = null) {
     const targetDir = cwd || this.projectPath;
     try {
-      let currentBranch = execSync("git branch --show-current", { cwd: targetDir, encoding: "utf-8" }).trim() || "main";
-      const safeId = storyId.replace(/[^a-zA-Z0-9-_]/g, "-").toLowerCase();
+      let currentBranch =
+        execFileSync('git', ['branch', '--show-current'], {
+          cwd: targetDir,
+          encoding: 'utf-8',
+        }).trim() || 'main';
+      const safeId = storyId.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
       const branchName = `hydra/task-${safeId}`;
 
       if (currentBranch === branchName) {
-        const mainBranch = this._mainBranch || "main";
-        execSync(`git checkout ${mainBranch}`, { cwd: targetDir, shell: "/bin/bash", timeout: 15000 });
+        const mainBranch = this._mainBranch || this._detectMainBranch(targetDir);
+        execFileSync('git', ['checkout', mainBranch], { cwd: targetDir, timeout: 15000 });
         currentBranch = mainBranch;
       } else {
         this._mainBranch = currentBranch;
       }
 
       try {
-        execSync("git add -A && git stash push -m 'hydra-temp-stash'", { cwd: targetDir, shell: "/bin/bash", timeout: 10000 });
-      } catch {}
+        execFileSync('git', ['add', '-A'], { cwd: targetDir, timeout: 10000 });
+        execFileSync('git', ['stash', 'push', '-m', 'hydra-temp-stash'], {
+          cwd: targetDir,
+          timeout: 10000,
+        });
+      } catch (e) {
+        console.error('Ignored error:', e.message);
+      }
 
       try {
-        execSync(`git branch -D ${branchName}`, { cwd: targetDir, shell: "/bin/bash", timeout: 10000 });
-      } catch {}
+        execFileSync('git', ['branch', '-D', branchName], { cwd: targetDir, timeout: 10000 });
+      } catch (e) {
+        console.error('Ignored error:', e.message);
+      }
 
-      execSync(`git checkout -b ${branchName}`, { cwd: targetDir, shell: "/bin/bash", timeout: 15000 });
+      execFileSync('git', ['checkout', '-b', branchName], { cwd: targetDir, timeout: 15000 });
 
       try {
-        const stashes = execSync("git stash list", { cwd: targetDir, encoding: "utf-8" }).toString();
-        if (stashes.includes("hydra-temp-stash")) {
-          execSync("git stash pop", { cwd: targetDir, shell: "/bin/bash", timeout: 10000 });
+        const stashes = execFileSync('git', ['stash', 'list'], {
+          cwd: targetDir,
+          encoding: 'utf-8',
+        }).toString();
+        if (stashes.includes('hydra-temp-stash')) {
+          execFileSync('git', ['stash', 'pop'], { cwd: targetDir, timeout: 10000 });
         }
-      } catch {}
+      } catch (e) {
+        console.error('Ignored error:', e.message);
+      }
 
       return true;
     } catch (err) {
@@ -119,19 +165,24 @@ export class Safety {
   rollbackLastSnapshot(storyId, cwd = null) {
     const targetDir = cwd || this.projectPath;
     try {
-      const safeId = storyId.replace(/[^a-zA-Z0-9-_]/g, "-").toLowerCase();
+      const safeId = storyId.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
       const branchName = `hydra/task-${safeId}`;
-      const mainBranch = this._mainBranch || "main";
+      const mainBranch = this._mainBranch || this._detectMainBranch(targetDir);
 
       try {
-        execSync("git reset --hard HEAD && git clean -fd", { cwd: targetDir, shell: "/bin/bash", timeout: 15000 });
-      } catch {}
+        execFileSync('git', ['reset', '--hard', 'HEAD'], { cwd: targetDir, timeout: 15000 });
+        execFileSync('git', ['clean', '-fd'], { cwd: targetDir, timeout: 15000 });
+      } catch (e) {
+        console.error('Ignored error:', e.message);
+      }
 
-      execSync(`git checkout ${mainBranch}`, { cwd: targetDir, shell: "/bin/bash", timeout: 15000 });
+      execFileSync('git', ['checkout', mainBranch], { cwd: targetDir, timeout: 15000 });
 
       try {
-        execSync(`git branch -D ${branchName}`, { cwd: targetDir, shell: "/bin/bash", timeout: 15000 });
-      } catch {}
+        execFileSync('git', ['branch', '-D', branchName], { cwd: targetDir, timeout: 15000 });
+      } catch (e) {
+        console.error('Ignored error:', e.message);
+      }
 
       return true;
     } catch (e) {
@@ -140,21 +191,62 @@ export class Safety {
     }
   }
 
+  _detectMainBranch(cwd) {
+    try {
+      const ref = execFileSync('git', ['symbolic-ref', 'refs/remotes/origin/HEAD'], {
+        cwd,
+        encoding: 'utf-8',
+        timeout: 5000,
+      }).trim();
+      return ref.replace('refs/remotes/origin/', '');
+    } catch (e) {
+      console.error('Ignored error:', e.message);
+    }
+    try {
+      const current = execFileSync('git', ['branch', '--show-current'], {
+        cwd,
+        encoding: 'utf-8',
+        timeout: 5000,
+      }).trim();
+      if (current && !current.startsWith('hydra/')) return current;
+    } catch (e) {
+      console.error('Ignored error:', e.message);
+    }
+    try {
+      const branches = execFileSync('git', ['branch'], {
+        cwd,
+        encoding: 'utf-8',
+        timeout: 5000,
+      }).trim();
+      if (branches.includes('master')) return 'master';
+      if (branches.includes('main')) return 'main';
+    } catch (e) {
+      console.error('Ignored error:', e.message);
+    }
+    return 'master';
+  }
+
   mergeTaskBranch(storyId, cwd = null) {
     const targetDir = cwd || this.projectPath;
     try {
-      const safeId = storyId.replace(/[^a-zA-Z0-9-_]/g, "-").toLowerCase();
+      const safeId = storyId.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
       const branchName = `hydra/task-${safeId}`;
-      const mainBranch = this._mainBranch || "main";
+      const mainBranch = this._mainBranch || this._detectMainBranch(targetDir);
 
-      execSync(`git checkout ${mainBranch}`, { cwd: targetDir, shell: "/bin/bash", timeout: 15000 });
+      execFileSync('git', ['checkout', mainBranch], { cwd: targetDir, timeout: 15000 });
 
       // Merge the task branch
-      execSync(`git merge ${branchName} --no-ff -m "Merge branch '${branchName}' into ${mainBranch}"`, { cwd: targetDir, shell: "/bin/bash", timeout: 15000 });
+      execFileSync(
+        'git',
+        ['merge', branchName, '--no-ff', '-m', `Merge branch '${branchName}' into ${mainBranch}`],
+        { cwd: targetDir, timeout: 15000 },
+      );
 
       try {
-        execSync(`git branch -d ${branchName}`, { cwd: targetDir, shell: "/bin/bash", timeout: 15000 });
-      } catch {}
+        execFileSync('git', ['branch', '-d', branchName], { cwd: targetDir, timeout: 15000 });
+      } catch (e) {
+        console.error('Ignored error:', e.message);
+      }
 
       return true;
     } catch (e) {
@@ -177,12 +269,11 @@ export class Safety {
 
   /**
    * Add cost increment to the log.
-   * 
+   *
    * FIX: Previously this method was called with the full accumulator value
-   * from AgentRuntime (costAccumulator), causing the total to be added 
-   * repeatedly. Now we track the last seen cost and only log the delta.
-   * 
-   * @param {number} usd - Total cost accumulator from this session
+   * Add cost to accumulator and check budget limits.
+   * @param {number} usd The total cost from runtime
+   * @param {number} tokens The total tokens from runtime
    */
   addCost(usd, tokens = 0) {
     this.resetCostWindow();
@@ -193,6 +284,12 @@ export class Safety {
     if (delta > 0 || tDelta > 0) {
       this._costLog.push({ at: Date.now(), cost: delta, tokens: tDelta });
       this._saveCostLog();
+
+      const totalToday = this.getDailyCost();
+      const limit = config.loop.dailyCostLimit || DEFAULT_MAX_COST;
+      getAppBus().telemetry('cost.update', 'safety', `Daily cost: $${totalToday.toFixed(4)}`, {
+        data: { totalToday, limit, pct: (totalToday / limit) * 100 },
+      });
     }
   }
 
@@ -206,9 +303,12 @@ export class Safety {
     return this._costLog.reduce((sum, e) => sum + (e.tokens || 0), 0);
   }
 
+  /**
+   * Check if the daily budget has been exceeded.
+   * @returns {boolean}
+   */
   isOverBudget() {
-    const raw = process.env.LOOP_DAILY_COST_LIMIT || process.env.LOOP_MAX_COST_PER_DAY_USD;
-    const max = raw ? Number(raw) : DEFAULT_MAX_COST;
+    const max = config.loop.dailyCostLimit;
     if (isNaN(max) || max <= 0) return this.getDailyCost() >= DEFAULT_MAX_COST;
     return this.getDailyCost() >= max;
   }
@@ -241,14 +341,7 @@ export class Safety {
   /* ─── Timeout budget ─── */
 
   maxCycleMs() {
-    if (process.env.LOOP_MAX_CYCLE_MS) {
-      const val = Number(process.env.LOOP_MAX_CYCLE_MS);
-      if (!isNaN(val) && val > 0) return val;
-    }
-    const raw = process.env.LOOP_MAX_CYCLE_MINUTES;
-    const val = raw ? Number(raw) : DEFAULT_MAX_CYCLE_MIN;
-    if (isNaN(val) || val <= 0) return DEFAULT_MAX_CYCLE_MIN * 60 * 1000;
-    return val * 60 * 1000;
+    return config.loop.maxCycleMs;
   }
 
   /* ─── House-keeping ─── */

@@ -1,13 +1,13 @@
-import { fileURLToPath } from "node:url";
-import { join, dirname } from "node:path";
-import { readdirSync, statSync, existsSync } from "node:fs";
+import { fileURLToPath } from 'node:url';
+import { join, dirname } from 'node:path';
+import { readdirSync, statSync, existsSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const bridgeRoot = join(__dirname, "..", "..");
-const projectsParent = join(bridgeRoot, "..");
+const bridgeRoot = join(__dirname, '..', '..');
+const projectsParent = join(bridgeRoot, '..');
 
 export const PROJECTS = {
-  "bridge": { path: bridgeRoot, desc: "OpenCode Bridge Telegram" }
+  bridge: { path: bridgeRoot, desc: 'OpenCode Bridge Telegram' },
 };
 
 // Dynamically discover projects in the projects parent directory
@@ -15,18 +15,18 @@ try {
   if (existsSync(projectsParent)) {
     const files = readdirSync(projectsParent);
     for (const file of files) {
-      if (file === "opencode-bridge-telegram" || file.startsWith(".")) continue;
+      if (file === 'opencode-bridge-telegram' || file.startsWith('.')) continue;
       const fullPath = join(projectsParent, file);
       if (statSync(fullPath).isDirectory()) {
         PROJECTS[file] = {
           path: fullPath,
-          desc: `Project ${file}`
+          desc: `Project ${file}`,
         };
       }
     }
   }
 } catch (e) {
-  console.error("Error dynamically discovering projects:", e.message);
+  console.error('Error dynamically discovering projects:', e.message);
 }
 
 export function getProjectPath(key) {

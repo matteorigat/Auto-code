@@ -1,22 +1,46 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join, basename } from "node:path";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join, basename } from 'node:path';
 
 export class TaskManager {
+  /**
+   * Initializes TaskManager
+   * @param {Object} options
+   * @param {string} options.projectPath
+   * @param {Object} [options.notionAdapter]
+   */
   constructor({ projectPath, notionAdapter = null } = {}) {
     this.projectPath = projectPath;
     this.notion = notionAdapter;
-    this.prdPath = join(projectPath, "prd.json");
-    this.projectsDir = join(projectPath, "projects");
+    this.prdPath = join(projectPath, 'prd.json');
+    this.projectsDir = join(projectPath, 'projects');
     this._tasks = [];
   }
 
   /* ─── PRD I/O ─── */
 
+  /**
+   * Reads the PRD from disk asynchronously
+   * @returns {Promise<Object>} The PRD object
+   */
+  async readPRDAsync() {
+    try {
+      const { readFile } = await import('node:fs/promises');
+      return JSON.parse(await readFile(this.prdPath, 'utf-8'));
+    } catch {
+      return { projects: [], crossProjectStories: [], progress: '', codebasePatterns: '' };
+    }
+  }
+
+  async writePRDAsync(prd) {
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(this.prdPath, JSON.stringify(prd, null, 2));
+  }
+
   readPRD() {
     try {
-      return JSON.parse(readFileSync(this.prdPath, "utf-8"));
+      return JSON.parse(readFileSync(this.prdPath, 'utf-8'));
     } catch {
-      return { projects: [], crossProjectStories: [], progress: "", codebasePatterns: "" };
+      return { projects: [], crossProjectStories: [], progress: '', codebasePatterns: '' };
     }
   }
 
@@ -28,30 +52,37 @@ export class TaskManager {
 
   getExecutionMode() {
     try {
-      const modePath = join(this.projectPath, ".hydra", "execution-mode.json");
+      const modePath = join(this.projectPath, '.hydra', 'execution-mode.json');
       if (existsSync(modePath)) {
-        const data = JSON.parse(readFileSync(modePath, "utf-8"));
-        return data.mode || "sequential";
+        const data = JSON.parse(readFileSync(modePath, 'utf-8'));
+        return data.mode || 'sequential';
       }
-    } catch {}
-    return "sequential";
+    } catch (e) {
+      console.error('Ignored error:', e.message);
+    }
+    return 'sequential';
   }
 
   /* ─── Source merge ─── */
 
+  /**
+   * Loads tasks from local PRD and merges with Notion if available.
+   * Resolves dependencies and returns sorted list.
+   * @returns {Promise<Array>} List of tasks
+   */
   async loadTasks() {
-    const prd = this.readPRD();
+    const prd = await this.readPRDAsync();
 
     // Flatten from nested structure
     let local = [];
-    const projectsList = prd.projects || [];
-    for (const proj of projectsList) {
-      for (const s of (proj.stories || [])) {
-        s._projectSlug = proj.slug;
-        local.push(s);
+    if (prd.projects) {
+      for (const proj of prd.projects) {
+        if (proj.stories) {
+          local.push(...proj.stories.map((s) => ({ ...s, _projectSlug: proj.slug })));
+        }
       }
     }
-    for (const s of (prd.crossProjectStories || [])) {
+    for (const s of prd.crossProjectStories || []) {
       s._projectSlug = null;
       local.push(s);
     }
@@ -60,18 +91,21 @@ export class TaskManager {
     if (this.notion?.isReady()) {
       try {
         const notionTasks = await this.notion.pullTasks();
-        local = this._mergeSources(notionTasks, local);
+        local = this._mergeSources(notionTasks, local, prd);
+        await this.writePRDAsync(prd);
       } catch (e) {
-        console.error("[TaskManager] Notion pull failed:", e.message);
+        console.error('[TaskManager] Notion pull failed:', e.message);
       }
     }
 
     this._tasks = local;
+    this._persist();
+    this.rebuildProjectFiles();
     return this._sortAndResolveDependencies();
   }
 
-  _mergeSources(notionTasks, localStories) {
-    const byId = new Map(localStories.map(s => [String(s.id), s]));
+  _mergeSources(notionTasks, localStories, prd) {
+    const byId = new Map(localStories.map((s) => [String(s.id), s]));
 
     for (const nt of notionTasks) {
       const sid = String(nt.storyId || nt.pageId);
@@ -81,39 +115,69 @@ export class TaskManager {
         if (nt.priority != null) local.priority = nt.priority;
         if (nt.description) local.description = nt.description;
         if (nt.acceptanceCriteria?.length) local.acceptanceCriteria = nt.acceptanceCriteria;
-        if (nt.status && nt.status !== "idle") {
+        if (nt.status && nt.status !== 'idle') {
           local.status = nt.status;
-          if (nt.status === "completed") local.passes = true;
-          if (nt.status === "blocked" && !local.passes) local.passes = false;
+          if (nt.status === 'completed') local.passes = true;
+          if (nt.status === 'blocked' && !local.passes) local.passes = false;
         }
       } else {
+        if (nt.excluded) continue;
+        // Determine project slug from Notion tag
+        let projectSlug = null;
+        if (nt.tag) {
+          const tagLower = nt.tag.toLowerCase().trim();
+          const existing = (prd?.projects || []).find(
+            (p) => p.slug?.toLowerCase() === tagLower || p.title?.toLowerCase() === tagLower,
+          );
+          if (existing) {
+            projectSlug = existing.slug;
+          } else {
+            projectSlug = nt.tag.trim();
+            prd.projects.push({
+              slug: projectSlug,
+              title: nt.tag.trim(),
+              pageId: nt.pageId || '',
+              description: '',
+              codebasePatterns: '',
+              stories: [],
+            });
+          }
+        }
+
         byId.set(sid, {
           id: sid,
           title: nt.title,
           description: nt.description,
           acceptanceCriteria: nt.acceptanceCriteria || [],
           priority: nt.priority || 3,
-          passes: nt.status === "completed",
+          status: nt.status || 'idle',
+          passes: nt.status === 'completed',
           excluded: nt.excluded || false,
-          notes: nt.notes || "",
+          notes: nt.notes || '',
           pageId: nt.pageId,
           blockId: nt.blockId,
-          _projectSlug: null,
+          _projectSlug: projectSlug,
         });
       }
     }
 
     const all = Array.from(byId.values());
-    return all.filter(s => !s.excluded);
+    return all.filter((s) => !s.excluded);
   }
 
   /* ─── Dependency inference ─── */
 
   _sortAndResolveDependencies() {
     const inferDeps = (stories) => {
-      const isInfra = (s) => /schema|database|table|migration|model|api|backend/i.test(s.title + " " + (s.description || ""));
-      const isUI = (s) => /page|component|ui|display|view|frontend|screen/i.test(s.title + " " + (s.description || ""));
-      return stories.map(s => {
+      const isInfra = (s) =>
+        /schema|database|table|migration|model|api|backend/i.test(
+          s.title + ' ' + (s.description || ''),
+        );
+      const isUI = (s) =>
+        /page|component|ui|display|view|frontend|screen/i.test(
+          s.title + ' ' + (s.description || ''),
+        );
+      return stories.map((s) => {
         const deps = [];
         if (isUI(s)) {
           for (const other of stories) {
@@ -126,29 +190,29 @@ export class TaskManager {
 
     const withDeps = inferDeps(this._tasks);
     const sorted = [];
-    const pending = new Set(withDeps.map(s => String(s.id)));
-    const depMap = new Map(withDeps.map(s => [String(s.id), new Set(s._deps || [])]));
+    const pending = new Set(withDeps.map((s) => String(s.id)));
+    const depMap = new Map(withDeps.map((s) => [String(s.id), new Set(s._deps || [])]));
 
     while (pending.size) {
       let progress = false;
       const candidates = [];
       for (const id of pending) {
         const deps = depMap.get(id);
-        if ([...deps].every(d => !pending.has(d))) candidates.push(id);
+        if ([...deps].every((d) => !pending.has(d))) candidates.push(id);
       }
       if (!candidates.length) break;
       const bestId = candidates.sort((a, b) => {
-        const pa = withDeps.find(s => String(s.id) === a)?.priority || 99;
-        const pb = withDeps.find(s => String(s.id) === b)?.priority || 99;
+        const pa = withDeps.find((s) => String(s.id) === a)?.priority || 99;
+        const pb = withDeps.find((s) => String(s.id) === b)?.priority || 99;
         return pa - pb;
       })[0];
-      sorted.push(withDeps.find(s => String(s.id) === bestId));
+      sorted.push(withDeps.find((s) => String(s.id) === bestId));
       pending.delete(bestId);
       progress = true;
     }
 
     for (const id of pending) {
-      sorted.push(withDeps.find(s => String(s.id) === id));
+      sorted.push(withDeps.find((s) => String(s.id) === id));
     }
 
     this._tasks = sorted;
@@ -158,11 +222,7 @@ export class TaskManager {
   /* ─── Story fitting / splitting ─── */
 
   needsSplitting(story, maxChars = 1200) {
-    const text = [
-      story.title,
-      story.description,
-      ...(story.acceptanceCriteria || []),
-    ].join(" ");
+    const text = [story.title, story.description, ...(story.acceptanceCriteria || [])].join(' ');
     return text.length > maxChars;
   }
 
@@ -188,37 +248,71 @@ export class TaskManager {
 
   /* ─── CRUD helpers ─── */
 
+  /**
+   * Returns all tasks
+   * @returns {Array<Object>}
+   */
+  getAllTasks() {
+    return this._tasks || [];
+  }
+
+  /**
+   * Finds task by ID
+   * @param {string} id
+   * @returns {Object|undefined}
+   */
+  findById(id) {
+    return this._tasks.find((t) => String(t.id) === String(id));
+  }
+
+  getBlocked() {
+    return this._tasks.filter((t) => t.status === 'blocked');
+  }
+
+  getDone() {
+    return this._tasks.filter((t) => t.passes);
+  }
+
+  updateTaskStatus(id, status) {
+    const t = this.findById(id);
+    if (t) {
+      t.status = status;
+      if (status === 'completed') t.passes = true;
+      this._persist();
+    }
+  }
+
   getNextPending() {
-    const ready = this.getReadyTasks("sequential");
+    const ready = this.getReadyTasks('sequential');
     return ready.length ? ready[0] : null;
   }
 
-  getReadyTasks(mode = "sequential") {
+  getReadyTasks(mode = 'sequential') {
     // A task is ready if it's not passed, not blocked
     // and ALL its dependencies are already passes: true
     const isReady = (task) => {
-      if (task.passes || task.status === "blocked") return false;
+      if (task.passes || task.status === 'blocked') return false;
       if (!task._deps || task._deps.length === 0) return true;
-      return task._deps.every(depId => {
-        const depTask = this._tasks.find(t => String(t.id) === String(depId));
+      return task._deps.every((depId) => {
+        const depTask = this._tasks.find((t) => String(t.id) === String(depId));
         return depTask ? depTask.passes : true;
       });
     };
 
     const readyTasks = this._tasks.filter(isReady);
     readyTasks.sort((a, b) => (a.priority || 3) - (b.priority || 3));
-    
-    if (mode === "parallel") {
+
+    if (mode === 'parallel') {
       return readyTasks;
     }
     return readyTasks.length ? [readyTasks[0]] : [];
   }
 
   markPass(storyId) {
-    const s = this._tasks.find(t => String(t.id) === String(storyId));
+    const s = this._tasks.find((t) => String(t.id) === String(storyId));
     if (s) {
       s.passes = true;
-      s.status = "completed";
+      s.status = 'completed';
       this._persist();
       this._syncProjectFiles(s);
     }
@@ -226,9 +320,9 @@ export class TaskManager {
   }
 
   markBlocked(storyId, reason) {
-    const s = this._tasks.find(t => String(t.id) === String(storyId));
+    const s = this._tasks.find((t) => String(t.id) === String(storyId));
     if (s) {
-      s.status = "blocked";
+      s.status = 'blocked';
       s.notes = reason;
       this._persist();
       this._syncProjectFiles(s);
@@ -247,8 +341,8 @@ export class TaskManager {
 
   stats() {
     const total = this._tasks.length;
-    const done = this._tasks.filter(s => s.passes).length;
-    const blocked = this._tasks.filter(s => s.status === "blocked").length;
+    const done = this._tasks.filter((s) => s.passes).length;
+    const blocked = this._tasks.filter((s) => s.status === 'blocked').length;
     return { total, done, left: total - done - blocked, blocked };
   }
 
@@ -259,7 +353,9 @@ export class TaskManager {
 
     // Rebuild nested structure from flat _tasks
     const slugIndex = {};
-    for (const proj of (prd.projects || [])) { slugIndex[proj.slug] = proj; }
+    for (const proj of prd.projects || []) {
+      slugIndex[proj.slug] = proj;
+    }
 
     // Group tasks by _projectSlug
     const bySlug = {};
@@ -276,7 +372,7 @@ export class TaskManager {
 
     // Update each project's stories in root prd.json
     const updatedSlugs = new Set();
-    for (const proj of (prd.projects || [])) {
+    for (const proj of prd.projects || []) {
       proj.stories = bySlug[proj.slug] || [];
       updatedSlugs.add(proj.slug);
     }
@@ -284,7 +380,10 @@ export class TaskManager {
     for (const slug of Object.keys(bySlug)) {
       if (!updatedSlugs.has(slug) && bySlug[slug].length > 0) {
         prd.projects.push({
-          slug, title: slug, pageId: "", stories: bySlug[slug],
+          slug,
+          title: slug,
+          pageId: '',
+          stories: bySlug[slug],
         });
         updatedSlugs.add(slug);
       }
@@ -302,12 +401,16 @@ export class TaskManager {
     const projDir = join(this.projectsDir, slug);
     if (!existsSync(projDir)) return;
 
-    const projPrdPath = join(projDir, "prd.json");
+    const projPrdPath = join(projDir, 'prd.json');
     try {
-      let projPrd = { project: slug, projectSlug: slug, stories: [], codebasePatterns: "" };
-      try { projPrd = JSON.parse(readFileSync(projPrdPath, "utf-8")); } catch {}
+      let projPrd = { project: slug, projectSlug: slug, stories: [], codebasePatterns: '' };
+      try {
+        projPrd = JSON.parse(readFileSync(projPrdPath, 'utf-8'));
+      } catch (e) {
+        /* intentional: file missing or invalid JSON */
+      }
 
-      const idx = projPrd.stories.findIndex(s => String(s.id) === String(story.id));
+      const idx = projPrd.stories.findIndex((s) => String(s.id) === String(story.id));
       const { _projectSlug, ...clean } = story;
       if (idx >= 0) {
         projPrd.stories[idx] = clean;
@@ -324,26 +427,30 @@ export class TaskManager {
 
   rebuildProjectFiles() {
     const prd = this.readPRD();
-    for (const proj of (prd.projects || [])) {
+    for (const proj of prd.projects || []) {
       const projDir = join(this.projectsDir, proj.slug);
-      try { mkdirSync(projDir, { recursive: true }); } catch { continue; }
+      try {
+        mkdirSync(projDir, { recursive: true });
+      } catch {
+        continue;
+      }
 
       const projPrd = {
         project: proj.title || proj.slug,
         projectSlug: proj.slug,
-        pageId: proj.pageId || "",
-        description: proj.description || "",
-        codebasePatterns: proj.codebasePatterns || "",
+        pageId: proj.pageId || '',
+        description: proj.description || '',
+        codebasePatterns: proj.codebasePatterns || '',
         stories: proj.stories || [],
       };
-      writeFileSync(join(projDir, "prd.json"), JSON.stringify(projPrd, null, 2));
+      writeFileSync(join(projDir, 'prd.json'), JSON.stringify(projPrd, null, 2));
     }
   }
 
   /* ─── Helper: find project slug for a story ID ─── */
 
   findProjectSlug(storyId) {
-    const s = this._tasks.find(t => String(t.id) === String(storyId));
+    const s = this._tasks.find((t) => String(t.id) === String(storyId));
     return s?._projectSlug || null;
   }
 }

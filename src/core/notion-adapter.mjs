@@ -8,17 +8,42 @@
  * Env: NOTION_API_TOKEN, NOTION_DATABASE_ID or NOTION_PAGE_ID
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import crypto from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { Client } from '@notionhq/client';
+import config from '../config/index.mjs';
+import { join } from 'node:path';
+import crypto from 'node:crypto';
 
-const NOTION_API = "https://api.notion.com/v1";
+/**
+ * @typedef {Object} NotionTask
+ * @property {string} storyId
+ * @property {string} title
+ * @property {string} status
+ * @property {string} [description]
+ * @property {number} [priority]
+ * @property {string} [pageId]
+ */
+
+const NOTION_API = 'https://api.notion.com/v1';
+
+const NOTION_STATUS_MAP = {
+  Backlog: 'idle',
+  'In Progress': 'running',
+  QA: 'verifying',
+  Done: 'completed',
+  Blocked: 'blocked',
+  Archived: 'archived',
+};
+
+const REVERSE_STATUS_MAP = Object.fromEntries(
+  Object.entries(NOTION_STATUS_MAP).map(([k, v]) => [v, k]),
+);
 
 export class NotionAdapter {
   constructor({ token, databaseId, projectTag, pageId } = {}) {
-    this.token = token || process.env.NOTION_API_TOKEN;
-    this.dbId = databaseId || process.env.NOTION_DATABASE_ID;
-    this.pageId = pageId || process.env.NOTION_PAGE_ID || this.dbId;
+    this.token = token || config.notion.apiToken;
+    this.dbId = databaseId || config.notion.databaseId;
+    this.pageId = pageId || config.notion.pageId || this.dbId;
     this.projectTag = projectTag || null;
     this._cache = null;
     this._cacheTs = 0;
@@ -26,16 +51,18 @@ export class NotionAdapter {
     this._idempotencyCache = new Map();
   }
 
-  isReady() { return !!(this.token && (this.dbId || this.pageId)); }
+  isReady() {
+    return !!(this.token && (this.dbId || this.pageId));
+  }
 
   /* ─── Low-level Notion HTTP ─── */
 
   async _request(path, opts = {}) {
-    if ((opts.method || "GET") !== "GET") {
+    if ((opts.method || 'GET') !== 'GET') {
       const hashStr = path + JSON.stringify(opts);
-      const hash = crypto.createHash("md5").update(hashStr).digest("hex");
+      const hash = crypto.createHash('md5').update(hashStr).digest('hex');
       const now = Date.now();
-      if (this._idempotencyCache.has(hash) && (now - this._idempotencyCache.get(hash)) < 3000) {
+      if (this._idempotencyCache.has(hash) && now - this._idempotencyCache.get(hash) < 3000) {
         return {};
       }
       this._idempotencyCache.set(hash, now);
@@ -49,14 +76,16 @@ export class NotionAdapter {
       ...opts,
       headers: {
         Authorization: `Bearer ${this.token}`,
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json",
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json',
         ...opts.headers,
       },
     });
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Notion ${opts.method || "GET"} ${path}: ${res.status} ${text.slice(0, 200)}`);
+      const text = await res.text().catch(() => '');
+      throw new Error(
+        `Notion ${opts.method || 'GET'} ${path}: ${res.status} ${text.slice(0, 200)}`,
+      );
     }
     return res.json().catch(() => ({}));
   }
@@ -70,19 +99,25 @@ export class NotionAdapter {
       const res = await fetch(`${NOTION_API}/databases/${id}`, {
         headers: {
           Authorization: `Bearer ${this.token}`,
-          "Notion-Version": "2022-06-28",
+          'Notion-Version': '2022-06-28',
         },
       });
       if (res.ok) {
         this._isPage = false;
         return;
       }
-    } catch {}
+    } catch (e) {
+      console.error('Ignored error:', e.message);
+    }
     this._isPage = true;
   }
 
   /* ─── Pull: Notion → local stories ─── */
 
+  /**
+   * Pulls tasks from the configured Notion database.
+   * @returns {Promise<NotionTask[]>}
+   */
   async pullTasks({ statusFilter = null, since = null } = {}) {
     if (!this.isReady()) return [];
     await this._detectType();
@@ -98,11 +133,13 @@ export class NotionAdapter {
   async _pullFromPage() {
     const pid = this.pageId || this.dbId;
     // Get page metadata (for URL)
-    let pageUrl = "";
+    let pageUrl = '';
     try {
       const pageMeta = await this._request(`/pages/${pid}`);
-      pageUrl = pageMeta.url || "";
-    } catch {}
+      pageUrl = pageMeta.url || '';
+    } catch (e) {
+      console.error('Ignored error:', e.message);
+    }
 
     const blocks = await this._getAllBlocks(pid);
     const stories = this._blocksToStories(blocks, pageUrl);
@@ -140,29 +177,31 @@ export class NotionAdapter {
 
     const blockText = (b) => {
       const t = b[b.type]?.rich_text;
-      if (!t) return "";
-      return t.map(rt => rt.plain_text).join("");
+      if (!t) return '';
+      return t.map((rt) => rt.plain_text).join('');
     };
 
     for (const block of blocks) {
       const text = blockText(block);
 
       // Detect story heading: ### N) "Title" (tag)
-      if (block.type === "heading_3") {
-        const storyMatch = text.match(/^(\d+)\)\s*[\u201c\u0022](.+?)[\u201d\u0022](?:\s*\((.+)\))?$/);
+      if (block.type === 'heading_3') {
+        const storyMatch = text.match(
+          /^(\d+)\)\s*[\u201c\u0022](.+?)[\u201d\u0022](?:\s*\((.+)\))?$/,
+        );
         if (storyMatch) {
           if (current) stories.push(current);
           current = {
             blockId: block.id,
             storyId: storyMatch[1],
             title: storyMatch[2],
-            tag: storyMatch[3] || "",
-            status: "idle",
+            tag: storyMatch[3] || '',
+            status: 'idle',
             excluded: false,
             priority: 3,
-            description: "",
+            description: '',
             acceptanceCriteria: [],
-            notes: "",
+            notes: '',
             costEstimate: null,
             originalRichText: JSON.stringify(block.heading_3?.rich_text || []),
             url: pageUrl,
@@ -172,8 +211,13 @@ export class NotionAdapter {
         }
       }
 
-      if (current && (block.type === "paragraph" || block.type === "bulleted_list_item" || block.type === "numbered_list_item")) {
-        if (text) current.description += text + "\n";
+      if (
+        current &&
+        (block.type === 'paragraph' ||
+          block.type === 'bulleted_list_item' ||
+          block.type === 'numbered_list_item')
+      ) {
+        if (text) current.description += text + '\n';
       }
     }
     if (current) stories.push(current);
@@ -188,19 +232,19 @@ export class NotionAdapter {
   /* ─── Database mode ─── */
 
   async _pullFromDatabase(statusFilter) {
-    const sorts = [{ timestamp: "created_time", direction: "descending" }];
+    const sorts = [{ timestamp: 'created_time', direction: 'descending' }];
     const body = { sorts };
 
     const filters = [];
     if (statusFilter) {
       filters.push({
-        property: "Status",
+        property: 'Status',
         select: { equals: statusFilter },
       });
     }
     if (this.projectTag) {
       filters.push({
-        property: "Project",
+        property: 'Project',
         rich_text: { contains: this.projectTag },
       });
     }
@@ -208,7 +252,7 @@ export class NotionAdapter {
     else if (filters.length > 1) body.filter = { and: filters };
 
     const pages = await this._queryDatabase(body);
-    const tasks = pages.map(p => this._dbRowToTask(p));
+    const tasks = pages.map((p) => this._dbRowToTask(p));
     this._cache = tasks;
     this._cacheTs = Date.now();
     return tasks;
@@ -219,8 +263,8 @@ export class NotionAdapter {
       return await this._queryDatabaseRaw(body);
     } catch (e) {
       // If filter references a non-existent property, retry without filters
-      if (e.message?.includes("Could not find property") && body.filter) {
-        console.warn("[NotionAdapter] Filter property not found, retrying without filter");
+      if (e.message?.includes('Could not find property') && body.filter) {
+        console.warn('[NotionAdapter] Filter property not found, retrying without filter');
         const retry = { sorts: body.sorts };
         return await this._queryDatabaseRaw(retry);
       }
@@ -234,7 +278,7 @@ export class NotionAdapter {
     do {
       const reqBody = nextCursor ? { ...body, start_cursor: nextCursor } : body;
       const res = await this._request(`/databases/${this.dbId}/query`, {
-        method: "POST",
+        method: 'POST',
         body: JSON.stringify(reqBody),
       });
       pages.push(...(res.results || []));
@@ -246,32 +290,23 @@ export class NotionAdapter {
 
   _dbRowToTask(page) {
     const p = page.properties || {};
-    const getTitle = (p) => p?.title?.[0]?.plain_text || "";
-    const getSelect = (p) => p?.select?.name || "";
-    const getNumber = (p) => (typeof p?.number === "number" ? p.number : null);
-    const getRichText = (p) => p?.rich_text?.map(rt => rt.plain_text).join("") || "";
+    const getTitle = (p) => p?.title?.[0]?.plain_text || '';
+    const getSelect = (p) => p?.select?.name || '';
+    const getNumber = (p) => (typeof p?.number === 'number' ? p.number : null);
+    const getRichText = (p) => p?.rich_text?.map((rt) => rt.plain_text).join('') || '';
     const getCheckbox = (p) => p?.checkbox || false;
-
-    const NOTION_TO_INTERNAL = {
-      "Backlog": "idle",
-      "In Progress": "running",
-      "QA": "verifying",
-      "Done": "completed",
-      "Blocked": "blocked",
-      "Archived": "archived",
-    };
 
     return {
       pageId: page.id,
       storyId: page.id,
       title: getTitle(p.Name),
-      status: NOTION_TO_INTERNAL[getSelect(p.Status)] || "idle",
+      status: NOTION_STATUS_MAP[getSelect(p.Status)] || 'idle',
       priority: getNumber(p.Priority) || 3,
       description: getRichText(p.Description),
       acceptanceCriteria: [],
       notes: getRichText(p.Notes),
       costEstimate: null,
-      excluded: getCheckbox(p["Excluded from Loop"]),
+      excluded: getCheckbox(p['Excluded from Loop']),
       tag: getRichText(p.Tag),
       url: page.url,
       lastEdited: page.last_edited_time,
@@ -294,36 +329,36 @@ export class NotionAdapter {
   }
 
   async _updatePageBlock(task) {
-    const isDone = task.status === "completed";
-    const sid = task.storyId || "";
-    const title = task.title || "";
+    const isDone = task.status === 'completed';
+    const sid = task.storyId || '';
+    const title = task.title || '';
 
     // Preserve original rich text structure, just update content
     let richText;
     try {
-      richText = JSON.parse(task.originalRichText || "[]");
+      richText = JSON.parse(task.originalRichText || '[]');
     } catch {
-      richText = [{ type: "text", text: { content: "" } }];
+      richText = [{ type: 'text', text: { content: '' } }];
     }
 
     // Detect quote style from original text: curly or straight
-    const orig = richText.map(r => r.plain_text || "").join("");
-    const curly = orig.includes("\u201c") || orig.includes("\u201d");
-    const lq = curly ? "\u201c" : '"';
-    const rq = curly ? "\u201d" : '"';
+    const orig = richText.map((r) => r.plain_text || '').join('');
+    const curly = orig.includes('\u201c') || orig.includes('\u201d');
+    const lq = curly ? '\u201c' : '"';
+    const rq = curly ? '\u201d' : '"';
 
-    const tag = task.tag ? ` (${task.tag})` : "";
+    const tag = task.tag ? ` (${task.tag})` : '';
     const newContent = `${sid}) ${lq}${title}${rq}${tag}`;
     if (richText.length > 0) {
       richText[0].text.content = newContent;
       // Remove extra items if we collapsed
       richText.splice(1);
     } else {
-      richText.push({ type: "text", text: { content: newContent } });
+      richText.push({ type: 'text', text: { content: newContent } });
     }
 
     await this._request(`/blocks/${task.blockId}`, {
-      method: "PATCH",
+      method: 'PATCH',
       body: JSON.stringify({
         heading_3: { rich_text: richText },
       }),
@@ -332,23 +367,11 @@ export class NotionAdapter {
   }
 
   async _updateDatabasePage(task) {
-    const DEFAULT_STATUS_MAP = {
-      Backlog: "idle",
-      "In Progress": "running",
-      QA: "verifying",
-      Done: "completed",
-      Blocked: "blocked",
-      Archived: "archived",
-    };
-    const REVERSE_STATUS_MAP = Object.fromEntries(
-      Object.entries(DEFAULT_STATUS_MAP).map(([k, v]) => [v, k])
-    );
-
     const props = {};
     if (task.status && REVERSE_STATUS_MAP[task.status]) {
       props.Status = { select: { name: REVERSE_STATUS_MAP[task.status] } };
     }
-    if (typeof task.priority === "number") {
+    if (typeof task.priority === 'number') {
       props.Priority = { number: task.priority };
     }
     if (task.notes !== undefined) {
@@ -356,7 +379,7 @@ export class NotionAdapter {
     }
 
     await this._request(`/pages/${task.pageId}`, {
-      method: "PATCH",
+      method: 'PATCH',
       body: JSON.stringify({ properties: props }),
     });
     return true;
@@ -370,22 +393,24 @@ export class NotionAdapter {
       // For pages, we append a new heading_3 block
       if (task.storyId) {
         const existing = await this.pullTasks();
-        if (existing.find(t => String(t.storyId) === String(task.storyId))) {
-          return existing.find(t => String(t.storyId) === String(task.storyId)).blockId;
+        if (existing.find((t) => String(t.storyId) === String(task.storyId))) {
+          return existing.find((t) => String(t.storyId) === String(task.storyId)).blockId;
         }
       }
       const sid = task.storyId || Date.now().toString(36);
       const text = `${sid}) "${task.title}"`;
       const res = await this._request(`/blocks/${this.pageId}/children`, {
-        method: "PATCH",
+        method: 'PATCH',
         body: JSON.stringify({
-          children: [{
-            object: "block",
-            type: "heading_3",
-            heading_3: {
-              rich_text: [{ type: "text", text: { content: text } }],
+          children: [
+            {
+              object: 'block',
+              type: 'heading_3',
+              heading_3: {
+                rich_text: [{ type: 'text', text: { content: text } }],
+              },
             },
-          }],
+          ],
         }),
       });
       return res.results?.[0]?.id || null;
@@ -394,21 +419,9 @@ export class NotionAdapter {
   }
 
   async _createDatabaseStory(task) {
-    const DEFAULT_STATUS_MAP = {
-      Backlog: "idle",
-      "In Progress": "running",
-      QA: "verifying",
-      Done: "completed",
-      Blocked: "blocked",
-      Archived: "archived",
-    };
-    const REVERSE_STATUS_MAP = Object.fromEntries(
-      Object.entries(DEFAULT_STATUS_MAP).map(([k, v]) => [v, k])
-    );
-
     if (task.storyId) {
       const dupes = await this.pullTasks();
-      const existing = dupes.find(t => String(t.storyId) === String(task.storyId));
+      const existing = dupes.find((t) => String(t.storyId) === String(task.storyId));
       if (existing) return existing.pageId;
     }
 
@@ -416,24 +429,37 @@ export class NotionAdapter {
       parent: { database_id: this.dbId },
       properties: {
         Name: { title: [{ text: { content: task.title } }] },
-        Status: { select: { name: REVERSE_STATUS_MAP[task.status || "idle"] || "Backlog" } },
-        Priority: { number: typeof task.priority === "number" ? task.priority : 3 },
-        "Story ID": { rich_text: [{ text: { content: String(task.storyId || Date.now().toString(36)) } }] },
+        Status: { select: { name: REVERSE_STATUS_MAP[task.status || 'idle'] || 'Backlog' } },
+        Priority: { number: typeof task.priority === 'number' ? task.priority : 3 },
+        'Story ID': {
+          rich_text: [{ text: { content: String(task.storyId || Date.now().toString(36)) } }],
+        },
       },
     };
     if (this.projectTag) {
       body.properties.Project = { rich_text: [{ text: { content: this.projectTag } }] };
     }
     if (task.description) {
-      body.properties.Description = { rich_text: [{ text: { content: task.description.slice(0, 2000) } }] };
+      body.properties.Description = {
+        rich_text: [{ text: { content: task.description.slice(0, 2000) } }],
+      };
     }
     if (task.acceptanceCriteria?.length) {
-      body.properties["Acceptance Criteria"] = {
-        rich_text: [{ text: { content: task.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n").slice(0, 2000) } }],
+      body.properties['Acceptance Criteria'] = {
+        rich_text: [
+          {
+            text: {
+              content: task.acceptanceCriteria
+                .map((c, i) => `${i + 1}. ${c}`)
+                .join('\n')
+                .slice(0, 2000),
+            },
+          },
+        ],
       };
     }
 
-    const res = await this._request("/pages", { method: "POST", body: JSON.stringify(body) });
+    const res = await this._request('/pages', { method: 'POST', body: JSON.stringify(body) });
     return res.id;
   }
 
@@ -442,7 +468,7 @@ export class NotionAdapter {
   async syncLocalPRD(projectPath, prd) {
     const stories = prd?.stories || [];
     const notionTasks = await this.pullTasks();
-    const byId = new Map(notionTasks.map(t => [String(t.storyId), t]));
+    const byId = new Map(notionTasks.map((t) => [String(t.storyId), t]));
 
     const results = [];
     for (const s of stories) {
@@ -454,15 +480,19 @@ export class NotionAdapter {
           description: s.description,
           acceptanceCriteria: s.acceptanceCriteria || [],
           priority: s.priority,
-          status: s.passes ? "completed" : "idle",
+          status: s.passes ? 'completed' : 'idle',
         });
-        results.push({ action: "created", pageId, storyId: sid });
+        results.push({ action: 'created', pageId, storyId: sid });
       } else {
         const t = byId.get(sid);
-        const localStatus = s.passes ? "completed" : t.status === "completed" ? "completed" : t.status;
+        const localStatus = s.passes
+          ? 'completed'
+          : t.status === 'completed'
+            ? 'completed'
+            : t.status;
         if (t.status !== localStatus) {
           await this.pushProgress({ ...t, status: localStatus });
-          results.push({ action: "updated", pageId: t.blockId || t.pageId, storyId: sid });
+          results.push({ action: 'updated', pageId: t.blockId || t.pageId, storyId: sid });
         }
       }
     }

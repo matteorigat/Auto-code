@@ -1,12 +1,13 @@
 [Unit]
 Description=OpenCode Telegram Bridge
-After=network.target
+After=network.target opencode-dashboard.service
+Requires=opencode-dashboard.service
 
 [Service]
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/projects/opencode-bridge-telegram
-ExecStart=/usr/bin/node /home/ubuntu/projects/opencode-bridge-telegram/index.mjs
+ExecStart=/usr/bin/node /home/ubuntu/projects/opencode-bridge-telegram/src/index.mjs
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
