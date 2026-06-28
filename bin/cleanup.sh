@@ -7,17 +7,33 @@ set -e
 PORTS=(8081 4000 9090 4096)
 
 echo "=== Stopping systemd service (if running) ==="
-if systemctl is-active --quiet opencode-bridge.service 2>/dev/null || systemctl --user is-active --quiet opencode-bridge.service 2>/dev/null; then
-    echo "Stopping opencode-bridge.service..."
-    sudo systemctl stop opencode-bridge.service || true
+if command -v systemctl >/dev/null 2>&1; then
+    if systemctl is-active --quiet opencode-bridge.service 2>/dev/null || systemctl --user is-active --quiet opencode-bridge.service 2>/dev/null; then
+        echo "Stopping opencode-bridge.service..."
+        sudo systemctl stop opencode-bridge.service || true
+    else
+        echo "opencode-bridge.service is not running."
+    fi
 else
-    echo "opencode-bridge.service is not running."
+    echo "systemctl not available, skipping systemd service stop."
 fi
 
 echo -e "\n=== Checking and terminating dangling processes on ports ${PORTS[*]} ==="
 for port in "${PORTS[@]}"; do
     # Find PIDs using the port
     pids=$(lsof -t -i :"$port" || true)
+    if [ -n "$pids" ]; then
+        # Filter out Docker Desktop helper processes to avoid killing Docker itself on macOS
+        filtered_pids=""
+        for pid in $pids; do
+            comm=$(ps -p "$pid" -o comm= 2>/dev/null || true)
+            if [[ "$comm" != *"com.docker"* && "$comm" != *"Docker"* ]]; then
+                filtered_pids="$filtered_pids $pid"
+            fi
+        done
+        pids=$(echo $filtered_pids | xargs)
+    fi
+
     if [ -n "$pids" ]; then
         echo "Port $port is in use by PID(s):"
         ps -p $pids -o pid,comm,args || true
@@ -27,12 +43,20 @@ for port in "${PORTS[@]}"; do
         sleep 1
         # Check if they are still alive
         still_alive=$(lsof -t -i :"$port" || true)
+        filtered_still_alive=""
+        for pid in $still_alive; do
+            comm=$(ps -p "$pid" -o comm= 2>/dev/null || true)
+            if [[ "$comm" != *"com.docker"* && "$comm" != *"Docker"* ]]; then
+                filtered_still_alive="$filtered_still_alive $pid"
+            fi
+        done
+        still_alive=$(echo $filtered_still_alive | xargs)
         if [ -n "$still_alive" ]; then
             echo "PID(s) didn't terminate, sending SIGKILL..."
             kill -9 $still_alive 2>/dev/null || true
         fi
     else
-        echo "Port $port is free."
+        echo "Port $port is free (or only used by Docker)."
     fi
 done
 

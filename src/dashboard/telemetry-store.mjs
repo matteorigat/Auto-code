@@ -1,5 +1,5 @@
-import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readFileSync, existsSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import { uuidv7 } from './utils.mjs';
 
 const MAX_TIMELINE = 200;
@@ -31,6 +31,37 @@ export class TelemetryStore {
       hitl: null,
     };
     this._loadInitialLiveState();
+    this._ingestOfflineLogs();
+  }
+
+  _ingestOfflineLogs() {
+    const offlineLogPath = join(process.cwd(), '.hydra', 'usage_logs.jsonl');
+    try {
+      if (existsSync(offlineLogPath)) {
+        const content = readFileSync(offlineLogPath, 'utf8');
+        const lines = content.trim().split('\n');
+        const events = [];
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            events.push(JSON.parse(line));
+          } catch (_) {
+            // Ignore malformed JSON lines from offline file
+          }
+        }
+        if (events.length > 0) {
+          console.log(`[TelemetryStore] Ingesting ${events.length} offline fallback logs...`);
+          this.ingest(events);
+        }
+        try {
+          unlinkSync(offlineLogPath);
+        } catch (_) {
+          // Ignore error deleting fallback file
+        }
+      }
+    } catch (e) {
+      console.warn('[TelemetryStore] Failed to ingest offline logs:', e.message);
+    }
   }
 
   _loadInitialLiveState() {

@@ -49,4 +49,39 @@ describe('DurableState', () => {
     expect(data.newField).toBe(true);
     expect(fs.writeFileSync).toHaveBeenCalled();
   });
+
+  it('recovers from backup if main checkpoint is corrupted', async () => {
+    const state = getDurableState('/test/path/backup');
+    
+    // Simulate existsSync returning true for main checkpoint and backup file
+    fs.existsSync.mockImplementation((path) => {
+      if (path.includes('loop-checkpoint.json')) return true;
+      if (path.includes('loop-checkpoint.json.bak')) return true;
+      return false;
+    });
+
+    // Simulate corrupted main checkpoint (JSON parse failure)
+    fs.readFileSync.mockImplementation((path) => {
+      if (path.includes('loop-checkpoint.json.bak')) {
+        return JSON.stringify({ phase: 'QA', attempt: 1, lastPhase: 'EXEC', eventId: 4 });
+      }
+      if (path.includes('loop-checkpoint.json')) {
+        throw new Error('Corrupted JSON syntax error');
+      }
+      return '';
+    });
+
+    const data = await state.load();
+    expect(data.phase).toBe('QA');
+    expect(data.attempt).toBe(1);
+    expect(data.lastPhase).toBe('EXEC');
+    expect(data.eventId).toBe(4);
+    
+    // Verify it restored the backup to the main file
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      expect.stringContaining('loop-checkpoint.json'),
+      expect.stringContaining('"phase":"QA"'),
+      'utf-8'
+    );
+  });
 });

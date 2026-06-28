@@ -56,7 +56,21 @@ export class DurableStateManager {
           return parsed;
         }
       } catch (e) {
-        console.error('[DurableState] load error:', e.message);
+        console.error('[DurableState] load error, attempting backup fallback:', e.message);
+        try {
+          if (existsSync(this.bakPath)) {
+            const raw = readFileSync(this.bakPath, 'utf-8');
+            const parsed = JSON.parse(raw);
+            this._state = parsed;
+            this._version = parsed.version || 1;
+            // Restore backup to main cpPath
+            writeFileSync(this.cpPath, raw, 'utf-8');
+            console.log('[DurableState] Successfully recovered from backup file.');
+            return parsed;
+          }
+        } catch (backupLoadErr) {
+          console.error('[DurableState] backup load error:', backupLoadErr.message);
+        }
       }
 
       // First run — create baseline
@@ -79,14 +93,17 @@ export class DurableStateManager {
     // Atomic write: write tmp → rename
     const tmp = this.cpPath + '.tmp' + Date.now();
     try {
+      // 1. Create a backup of the existing checkpoint before overwriting
+      if (existsSync(this.cpPath)) {
+        try {
+          writeFileSync(this.bakPath, readFileSync(this.cpPath, 'utf-8'), 'utf-8');
+        } catch (backupErr) {
+          console.warn('[DurableState] backup creation failed:', backupErr.message);
+        }
+      }
+
       writeFileSync(tmp, json, 'utf-8');
       renameSync(tmp, this.cpPath);
-      // Remove old backup after successful write
-      try {
-        if (existsSync(this.bakPath)) unlinkSync(this.bakPath);
-      } catch {
-        /* intentional: best-effort cleanup */
-      }
       return true;
     } catch (e) {
       console.error('[DurableState] save error:', e.message);

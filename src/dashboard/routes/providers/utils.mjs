@@ -7,16 +7,36 @@ import config from '../../../config/index.mjs';
 export function resolveUpstreamProvider(actualModel, defaultProvider = 'unknown') {
   const modelLower = actualModel.toLowerCase();
 
+  // 1. Prioritize explicit provider prefix matching
+  if (modelLower.startsWith('opencode/')) return 'opencode';
+  if (modelLower.startsWith('openrouter/')) return 'openrouter';
+  if (modelLower.startsWith('groq/')) return 'groq';
   if (
-    modelLower.startsWith('opencode/') ||
+    modelLower.startsWith('mistral/') ||
+    modelLower.startsWith('codestral/') ||
+    modelLower.startsWith('ministral/')
+  )
+    return 'mistral';
+  if (modelLower.startsWith('nvidia/') || modelLower.startsWith('nvidia_nim/')) return 'nvidia';
+  if (modelLower.startsWith('kilo/') || modelLower.startsWith('kilocode/')) return 'kilo';
+  if (modelLower.startsWith('cerebras/')) return 'cerebras';
+  if (modelLower.startsWith('ollama/')) return 'ollama';
+
+  // 2. Specific model keywords that fall back to opencode if they aren't explicitly prefixed
+  if (
     modelLower.includes('big-pickle') ||
-    modelLower.includes('nemotron-3-ultra') ||
-    modelLower.includes('mimo-v2.5') ||
-    modelLower.includes('north-mini-code-free')
+    modelLower.includes('north-mini-code-free') ||
+    modelLower.includes('mimo-v2.5')
   ) {
     return 'opencode';
   }
 
+  // If it's a nemotron-3-ultra model (and didn't match any of the prefixes above), default to opencode
+  if (modelLower.includes('nemotron-3-ultra')) {
+    return 'opencode';
+  }
+
+  // 3. Litellm YAML matching
   try {
     const configPath = join(process.cwd(), 'config', 'litellm.yaml');
     if (existsSync(configPath)) {
@@ -40,8 +60,11 @@ export function resolveUpstreamProvider(actualModel, defaultProvider = 'unknown'
       if (baseName && baseName.length > 3) {
         for (const m of models) {
           const yamlModel = (m.litellm_params?.model || '').toLowerCase();
+          const yamlAlias = (m.model_name || '').toLowerCase();
           const yamlProvider = m.model_info?.provider || '';
-          if (yamlModel.includes(baseName)) {
+          const yamlBase = yamlModel.split('/').pop();
+          const yamlAliasBase = yamlAlias.split('/').pop();
+          if (yamlBase === baseName || yamlAliasBase === baseName) {
             if (yamlProvider) {
               return yamlProvider === 'opencode_zen' ? 'opencode' : yamlProvider;
             }
@@ -53,17 +76,7 @@ export function resolveUpstreamProvider(actualModel, defaultProvider = 'unknown'
     console.warn('[providers] resolveUpstreamProvider yaml parse failed:', e.message);
   }
 
-  if (modelLower.startsWith('openrouter/')) return 'openrouter';
-  if (modelLower.startsWith('groq/')) return 'groq';
-  if (
-    modelLower.startsWith('mistral/') ||
-    modelLower.startsWith('codestral/') ||
-    modelLower.startsWith('ministral/')
-  )
-    return 'mistral';
-  if (modelLower.startsWith('nvidia/')) return 'nvidia';
-  if (modelLower.startsWith('opencode/')) return 'opencode';
-
+  // 4. Case-insensitive substring matching fallback
   if (modelLower.includes('openrouter')) return 'openrouter';
   if (modelLower.includes('groq')) return 'groq';
   if (
@@ -74,6 +87,9 @@ export function resolveUpstreamProvider(actualModel, defaultProvider = 'unknown'
     return 'mistral';
   if (modelLower.includes('nvidia') || modelLower.includes('nim')) return 'nvidia';
   if (modelLower.includes('opencode') || modelLower.includes('zen')) return 'opencode';
+  if (modelLower.includes('kilo')) return 'kilo';
+  if (modelLower.includes('cerebras')) return 'cerebras';
+  if (modelLower.includes('ollama')) return 'ollama';
 
   if (defaultProvider === 'opencode_zen') return 'opencode';
   if (defaultProvider === 'openai') {
@@ -149,18 +165,16 @@ export function getUniqueModels(collector) {
     if (!m.model_name) continue;
 
     let actualModel = m.litellm_params?.model || m.model_name;
+    let provider = m.model_info?.provider || 'unknown';
+    if (provider === 'opencode_zen') provider = 'opencode';
+
+    provider = resolveUpstreamProvider(actualModel, provider);
+
+    if (actualModel.startsWith('openai/')) {
+      actualModel = actualModel.replace('openai/', `${provider}/`);
+    }
     if (actualModel.startsWith('openrouter/openrouter/')) {
       actualModel = actualModel.replace('openrouter/openrouter/', 'openrouter/');
-    }
-    let provider = m.model_info?.provider || 'unknown';
-
-    if (provider === 'opencode_zen' || provider === 'opencode') {
-      provider = 'opencode';
-      if (actualModel.startsWith('openai/')) {
-        actualModel = actualModel.replace('openai/', 'opencode/');
-      }
-    } else {
-      provider = resolveUpstreamProvider(actualModel, provider);
     }
 
     if (!uniqueMap.has(actualModel)) {
@@ -182,30 +196,20 @@ export function getUniqueModels(collector) {
     const dbModelName = r.model_name;
 
     let normalizedModel = dbModelName;
-    if (normalizedModel.startsWith('openrouter/openrouter/')) {
-      normalizedModel = normalizedModel.replace('openrouter/openrouter/', 'openrouter/');
-    }
     let provider = 'unknown';
     if (dbModelName.includes('/')) {
       provider = dbModelName.split('/')[0];
     }
-    if (provider === 'opencode_zen' || provider === 'opencode' || provider === 'openai') {
-      if (
-        normalizedModel.startsWith('openai/') &&
-        (normalizedModel.includes('big-pickle') ||
-          normalizedModel.includes('nemotron-3-ultra') ||
-          normalizedModel.includes('deepseek-v4-flash') ||
-          normalizedModel.includes('mimo-v2.5') ||
-          normalizedModel.includes('north-mini-code-free'))
-      ) {
-        normalizedModel = normalizedModel.replace('openai/', 'opencode/');
-        provider = 'opencode';
-      } else if (normalizedModel.startsWith('opencode/')) {
-        provider = 'opencode';
-      }
-    }
+    if (provider === 'opencode_zen') provider = 'opencode';
 
     provider = resolveUpstreamProvider(normalizedModel, provider);
+
+    if (normalizedModel.startsWith('openai/')) {
+      normalizedModel = normalizedModel.replace('openai/', `${provider}/`);
+    }
+    if (normalizedModel.startsWith('openrouter/openrouter/')) {
+      normalizedModel = normalizedModel.replace('openrouter/openrouter/', 'openrouter/');
+    }
 
     let isAlias = false;
     for (const entry of uniqueMap.values()) {

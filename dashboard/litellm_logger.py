@@ -102,10 +102,11 @@ class SQLiteCompatibleLogger(CustomLogger):
                 }
             }
 
+            host = os.environ.get("DASHBOARD_HOST", "127.0.0.1")
             port = os.environ.get("DASHBOARD_PORT", "8081")
             import urllib.request
             req = urllib.request.Request(
-                f"http://127.0.0.1:{port}/api/internal/telemetry",
+                f"http://{host}:{port}/api/internal/telemetry",
                 data=json.dumps({"events": [log_entry]}).encode('utf-8'),
                 headers={'Content-Type': 'application/json'}
             )
@@ -123,7 +124,9 @@ class SQLiteCompatibleLogger(CustomLogger):
         self._send_metrics(kwargs, response_obj, start_time, end_time)
 
     async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
-        self._send_metrics(kwargs, response_obj, start_time, end_time)
+        import asyncio
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._send_metrics, kwargs, response_obj, start_time, end_time)
 
     def _send_failure_metrics(self, kwargs, response_obj, start_time, end_time):
         try:
@@ -149,7 +152,7 @@ class SQLiteCompatibleLogger(CustomLogger):
                     prompt = str(messages)
 
             log_entry = {
-                "type": "model.fallback",
+                "type": "log",
                 "source": "litellm",
                 "message": f"Model failed (fallback triggered if configured): {provider}/{model_id} - {error_str}",
                 "ts": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
@@ -163,10 +166,11 @@ class SQLiteCompatibleLogger(CustomLogger):
                 }
             }
 
+            host = os.environ.get("DASHBOARD_HOST", "127.0.0.1")
             port = os.environ.get("DASHBOARD_PORT", "8081")
             import urllib.request
             req = urllib.request.Request(
-                f"http://127.0.0.1:{port}/api/internal/telemetry",
+                f"http://{host}:{port}/api/internal/telemetry",
                 data=json.dumps({"events": [log_entry]}).encode('utf-8'),
                 headers={'Content-Type': 'application/json'}
             )
@@ -182,6 +186,8 @@ class SQLiteCompatibleLogger(CustomLogger):
         self._send_failure_metrics(kwargs, response_obj, start_time, end_time)
 
     async def async_log_failure_event(self, kwargs, response_obj, start_time, end_time):
-        self._send_failure_metrics(kwargs, response_obj, start_time, end_time)
+        import asyncio
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._send_failure_metrics, kwargs, response_obj, start_time, end_time)
 
 proxy_handler_instance = SQLiteCompatibleLogger()

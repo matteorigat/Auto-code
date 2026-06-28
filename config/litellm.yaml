@@ -1,22 +1,15 @@
 model_list:
-  - model_name: Free Models Router
-    litellm_params:
-      model: openai/openrouter/free
-      api_base: https://openrouter.ai/api/v1
-      api_key: os.environ/OPENROUTER_API_KEY
-    model_info:
-      provider: openrouter
-  - model_name: 'NVIDIA: Nemotron 3 Ultra (free)'
+  - model_name: "NVIDIA: Nemotron 3 Ultra (free)"
     litellm_params:
       model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
     model_info:
       provider: openrouter
-  - model_name: 'Poolside: Laguna M.1 (free)'
+  - model_name: "Poolside: Laguna M.1 (free)"
     litellm_params:
       model: openrouter/poolside/laguna-m.1:free
     model_info:
       provider: openrouter
-  - model_name: 'Qwen: Qwen3 Coder 480B A35B (free)'
+  - model_name: "Qwen: Qwen3 Coder 480B A35B (free)"
     litellm_params:
       model: openrouter/qwen/qwen3-coder:free
     model_info:
@@ -33,7 +26,7 @@ model_list:
       provider: cerebras
   - model_name: gpt-oss-120b
     litellm_params:
-      model: cerebras/gpt-oss-120b
+      model: mistral/devstral-latest
     model_info:
       provider: cerebras
   - model_name: deepseek-ai/deepseek-v4-flash
@@ -57,20 +50,6 @@ model_list:
       api_key: os.environ/NVIDIA_API_KEY
     model_info:
       provider: nvidia
-  - model_name: stepfun-ai/step-3.7-flash
-    litellm_params:
-      model: openai/stepfun-ai/step-3.7-flash
-      api_base: https://integrate.api.nvidia.com/v1
-      api_key: os.environ/NVIDIA_API_KEY
-    model_info:
-      provider: nvidia
-  - model_name: big-pickle
-    litellm_params:
-      model: openai/big-pickle
-      api_base: https://opencode.ai/zen/v1
-      api_key: os.environ/OPENCODE_API_KEY
-    model_info:
-      provider: opencode
   - model_name: deepseek-v4-flash-free
     litellm_params:
       model: openai/deepseek-v4-flash-free
@@ -114,6 +93,79 @@ model_list:
       model: ollama/gemma4:12b
     model_info:
       provider: ollama
+  - model_name: openai/tier-4-planner
+    litellm_params:
+      model: openai/big-pickle
+    model_info:
+      provider: openai
+  - model_name: openai/tier-4-planner-fb1
+    litellm_params:
+      model: openai/openrouter/free
+    model_info:
+      provider: opencode
+  - model_name: openai/tier-4-planner-fb2
+    litellm_params:
+      model: cerebras/gpt-oss-120b
+    model_info:
+      provider: openrouter
+  - model_name: openai/tier-3-builder
+    litellm_params:
+      model: openai/big-pickle
+    model_info:
+      provider: openai
+  - model_name: openai/tier-3-builder-fb1
+    litellm_params:
+      model: openai/openrouter/free
+    model_info:
+      provider: opencode
+  - model_name: openai/tier-2-hunter
+    litellm_params:
+      model: openai/openrouter/free
+    model_info:
+      provider: openai
+  - model_name: openai/tier-2-hunter-fb1
+    litellm_params:
+      model: mistral/devstral-latest
+    model_info:
+      provider: mistral
+  - model_name: openai/tier-1-trivial
+    litellm_params:
+      model: openai/openrouter/free
+    model_info:
+      provider: openai
+  - model_name: openai/tier-1-trivial-fb1
+    litellm_params:
+      model: mistral/devstral-latest
+    model_info:
+      provider: cerebras
+  - model_name: z-ai/glm-5.1
+    litellm_params:
+      model: openai/z-ai/glm-5.1
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: os.environ/NVIDIA_API_KEY
+    model_info:
+      provider: nvidia
+  - model_name: moonshotai/kimi-k2.6
+    litellm_params:
+      model: openai/moonshotai/kimi-k2.6
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: os.environ/NVIDIA_API_KEY
+    model_info:
+      provider: nvidia
+  - model_name: Free Models Router
+    litellm_params:
+      model: cerebras/gpt-oss-120b
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      provider: openrouter
+  - model_name: big-pickle
+    litellm_params:
+      model: openai/openrouter/free
+      api_base: https://opencode.ai/zen/v1
+      api_key: os.environ/OPENCODE_API_KEY
+    model_info:
+      provider: opencode
 router_settings:
   routing_strategy: usage-based-routing-v2
   num_retries: 1
@@ -125,7 +177,16 @@ router_settings:
     RateLimitErrorAllowedFails: 5
   redis_host: os.environ/REDIS_HOST
   redis_port: os.environ/REDIS_PORT
-  fallbacks: []
+  fallbacks:
+    - openai/tier-2-hunter:
+        - openai/tier-2-hunter-fb1
+    - openai/tier-1-trivial:
+        - openai/tier-1-trivial-fb1
+    - openai/tier-4-planner:
+        - openai/tier-4-planner-fb1
+        - openai/tier-4-planner-fb2
+    - openai/tier-3-builder:
+        - openai/tier-3-builder-fb1
   context_window_fallbacks: []
   rate_limit_fails_allowed: 1
 litellm_settings:

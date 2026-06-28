@@ -54,9 +54,7 @@ export class DiscoveryView {
       <div class="flex items-center gap-2 flex-wrap shrink-0" id="disco-filters">
         <select id="disco-sort" class="px-3 py-1.5 bg-zinc-900 border border-white/5 rounded-lg text-xs text-zinc-300 font-medium focus:outline-none focus:border-primary/50">
           <option value="name">Sort: Name</option>
-          <option value="intel">Sort: Intelligence</option>
-          <option value="coding">Sort: Coding</option>
-          <option value="agentic">Sort: Agentic</option>
+          <option value="quality">Sort: Quality</option>
           <option value="context">Sort: Context Length</option>
         </select>
         <select id="disco-provider" class="px-3 py-1.5 bg-zinc-900 border border-white/5 rounded-lg text-xs text-zinc-300 font-medium focus:outline-none focus:border-primary/50">
@@ -189,11 +187,7 @@ export class DiscoveryView {
   _sortModels(models) {
     const sortBy = this.sortEl.value;
     return [...models].sort((a, b) => {
-      const bma = a.benchmarks || {};
-      const bmb = b.benchmarks || {};
-      if (sortBy === 'intel') return (bmb.intelligence_index || 0) - (bma.intelligence_index || 0);
-      if (sortBy === 'coding') return (bmb.coding_index || 0) - (bma.coding_index || 0);
-      if (sortBy === 'agentic') return (bmb.agentic_index || 0) - (bma.agentic_index || 0);
+      if (sortBy === 'quality') return (b.quality_score || 0) - (a.quality_score || 0);
       if (sortBy === 'context') return (b.context || 0) - (a.context || 0);
       return (a.name || a.id || '').localeCompare(b.name || b.id || '');
     });
@@ -235,12 +229,7 @@ export class DiscoveryView {
       totalCount += models.length;
 
       models.sort((a, b) => {
-        const bma = a.benchmarks || {};
-        const bmb = b.benchmarks || {};
-        if (sortBy === 'intel')
-          return (bmb.intelligence_index || 0) - (bma.intelligence_index || 0);
-        if (sortBy === 'coding') return (bmb.coding_index || 0) - (bma.coding_index || 0);
-        if (sortBy === 'agentic') return (bmb.agentic_index || 0) - (bma.agentic_index || 0);
+        if (sortBy === 'quality') return (b.quality_score || 0) - (a.quality_score || 0);
         if (sortBy === 'context') return (b.context || 0) - (a.context || 0);
         return (a.name || a.id || '').localeCompare(b.name || b.id || '');
       });
@@ -292,18 +281,31 @@ export class DiscoveryView {
     this._renderComparePanel();
   }
 
-  _benchBar(value, max, type) {
-    if (value == null)
-      return `<div class="flex items-center gap-2"><span class="text-[10px] text-zinc-600 w-6">-</span><div class="mm-bench-bar-track flex-grow"><div class="mm-bench-bar-fill ${type}" style="width:0%"></div></div></div>`;
-    const pct = Math.min(100, Math.max(0, (value / max) * 100));
-    return `<div class="flex items-center gap-2"><span class="text-[10px] font-mono w-6 ${value > 70 ? 'text-emerald-400' : value > 40 ? 'text-zinc-300' : 'text-zinc-500'}">${Math.round(value)}</span><div class="mm-bench-bar-track flex-grow"><div class="mm-bench-bar-fill ${type}" style="width:${pct}%"></div></div></div>`;
+  _qualityBadge(score, source) {
+    if (score == null)
+      return `<div class="flex items-center gap-1.5"><span style="width:14px;height:14px;color:#3f3f46" class="flex-shrink-0">${icons.brain}</span><span class="text-[11px] text-zinc-600 font-mono">—</span></div>`;
+    const color = score >= 70 ? 'text-emerald-400' : score >= 40 ? 'text-amber-400' : 'text-zinc-400';
+    const bgColor = score >= 70 ? 'bg-emerald-500/10 border-emerald-500/20' : score >= 40 ? 'bg-amber-500/10 border-amber-500/20' : 'bg-zinc-500/10 border-zinc-500/20';
+    const pct = Math.min(100, Math.max(0, score));
+    const sourceLabel = source === 'openrouter' ? 'OR' : source === 'larikoz' ? 'LK' : source === 'arena' ? 'AR' : source === 'aa' ? 'AA' : '';
+    return `<div class="flex items-center gap-2">
+      <span style="width:14px;height:14px" class="flex-shrink-0 ${color}">${icons.brain}</span>
+      <span class="text-sm font-bold font-mono ${color}">${Math.round(score)}</span>
+      <div class="mm-bench-bar-track flex-grow"><div class="mm-bench-bar-fill intel" style="width:${pct}%"></div></div>
+      ${sourceLabel ? `<span class="text-[8px] font-mono text-zinc-600" title="Source: ${escapeHtml(source)}">${sourceLabel}</span>` : ''}
+    </div>`;
+  }
+
+  _contextBadge(context, contextSource) {
+    if (!context) return `<span class="text-[10px] text-zinc-600 font-mono">—</span>`;
+    const ctx = context >= 1000000 ? `${(context / 1000000).toFixed(1)}M` : `${Math.round(context / 1000)}k`;
+    const isCapped = contextSource === 'override';
+    return `<span class="text-[10px] font-mono ${isCapped ? 'text-amber-400' : 'text-zinc-400'}" title="${isCapped ? 'Provider-specific limit (lower than model native)' : contextSource || 'unknown'}">${isCapped ? '⚠ ' : ''}${ctx}</span>`;
   }
 
   _renderGrid(models) {
     return `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-1">${models
       .map((m) => {
-        const bm = m.benchmarks || {};
-        const ctx = m.context ? `${Math.round(m.context / 1000)}k` : '-';
         const cmpKey = `${m._provider.provider}/${m.id}`;
         const isComparing = this.compareSet.has(cmpKey);
 
@@ -320,14 +322,15 @@ export class DiscoveryView {
           <span class="text-[10px] text-zinc-400 border border-white/5 bg-white/[0.03] rounded px-1.5 py-0.5 flex-shrink-0">${escapeHtml(m._provider.label)}</span>
         </div>
 
-        <div class="space-y-1.5">
-          <div class="flex items-center gap-1.5"><span style="width:12px;height:12px;color:#8b5cf6" class="flex-shrink-0">${icons.brain}</span>${this._benchBar(bm.intelligence_index, 100, 'intel')}</div>
-          <div class="flex items-center gap-1.5"><span style="width:12px;height:12px;color:#3b82f6" class="flex-shrink-0">${icons.code}</span>${this._benchBar(bm.coding_index, 100, 'coding')}</div>
-          <div class="flex items-center gap-1.5"><span style="width:12px;height:12px;color:#10b981" class="flex-shrink-0">${icons.zap}</span>${this._benchBar(bm.agentic_index, 100, 'agentic')}</div>
+        <div class="mt-2">
+          ${this._qualityBadge(m.quality_score, m.quality_source)}
         </div>
 
         <div class="flex items-center justify-between text-[10px] text-zinc-500 pt-2 border-t border-white/[0.03] mt-auto">
-          <span>Context: ${ctx}</span>
+          <div class="flex items-center gap-1">
+            <span style="width:10px;height:10px;color:#52525b">${icons.code}</span>
+            Context: ${this._contextBadge(m.context, m.context_source)}
+          </div>
         </div>
 
         <div class="flex items-center gap-2 mt-1">
@@ -350,13 +353,12 @@ export class DiscoveryView {
       <div class="grid grid-cols-12 gap-4 px-4 py-3 border-b border-white/5 bg-zinc-900/90 text-xs font-semibold text-zinc-400 uppercase tracking-wider">
         <div class="col-span-4">Model</div>
         <div class="col-span-2">Provider</div>
-        <div class="col-span-4">Benchmarks</div>
+        <div class="col-span-3">Quality</div>
+        <div class="col-span-1">Context</div>
         <div class="col-span-2 text-right">Action</div>
       </div>
       <div class="divide-y divide-white/[0.02]">${models
         .map((m) => {
-          const bm = m.benchmarks || {};
-          const ctx = m.context ? `${Math.round(m.context / 1000)}k` : '-';
           return `<div class="grid grid-cols-12 gap-4 px-4 py-3 hover:bg-white/[0.02] transition-colors items-center">
           <div class="col-span-4 flex flex-col">
             <span class="text-sm font-semibold text-white break-words">${escapeHtml(m.name || m.id)}</span>
@@ -366,11 +368,11 @@ export class DiscoveryView {
             </div>
           </div>
           <div class="col-span-2"><span class="text-xs text-zinc-400 border border-white/5 bg-white/[0.03] rounded px-2 py-1">${escapeHtml(m._provider.label)}</span></div>
-          <div class="col-span-4 space-y-1">
-            ${this._benchBar(bm.intelligence_index, 100, 'intel')}
-            ${this._benchBar(bm.coding_index, 100, 'coding')}
-            ${this._benchBar(bm.agentic_index, 100, 'agentic')}
-            <span class="text-[10px] text-zinc-500">Ctx: ${ctx}</span>
+          <div class="col-span-3">
+            ${this._qualityBadge(m.quality_score, m.quality_source)}
+          </div>
+          <div class="col-span-1">
+            ${this._contextBadge(m.context, m.context_source)}
           </div>
           <div class="col-span-2 flex justify-end gap-2">
             ${
@@ -418,46 +420,24 @@ export class DiscoveryView {
       if (m) cmpModels.push(m);
     }
 
-    const allIntel = cmpModels
-      .map((m) => m.benchmarks?.intelligence_index)
-      .filter((v) => v != null);
-    const allCode = cmpModels.map((m) => m.benchmarks?.coding_index).filter((v) => v != null);
-    const allAgent = cmpModels.map((m) => m.benchmarks?.agentic_index).filter((v) => v != null);
-
     content.innerHTML = `<div class="grid gap-4" style="grid-template-columns:repeat(${Math.min(cmpModels.length, 4)}, 1fr)">${cmpModels
       .map((m) => {
-        const bm = m.benchmarks || {};
-        const bestIntel = allIntel.length > 1 && bm.intelligence_index === Math.max(...allIntel);
-        const bestCode = allCode.length > 1 && bm.coding_index === Math.max(...allCode);
-        const bestAgent = allAgent.length > 1 && bm.agentic_index === Math.max(...allAgent);
+        const bestQuality = cmpModels.length > 1 && m.quality_score != null &&
+          m.quality_score === Math.max(...cmpModels.map(x => x.quality_score || 0));
+        const color = m.quality_score >= 70 ? 'text-emerald-400' : m.quality_score >= 40 ? 'text-amber-400' : 'text-zinc-400';
 
         return `<div class="bg-white/[0.02] border border-white/5 rounded-xl p-4 space-y-3">
         <div class="text-sm font-semibold text-white truncate">${escapeHtml(m.name || m.id)}</div>
-        <div class="space-y-2">
-          <div class="${bestIntel ? 'bg-purple-500/[0.04] rounded-lg p-1.5' : 'p-1.5'}">
-            <div class="flex items-center justify-between text-[10px] mb-1">
-              <span class="text-zinc-400">Intelligence</span>
-              <span class="font-mono ${bestIntel ? 'text-purple-400 font-bold' : 'text-zinc-500'}">${bm.intelligence_index != null ? Math.round(bm.intelligence_index) : '-'}</span>
-            </div>
-            <div class="mm-bench-bar-track"><div class="mm-bench-bar-fill intel" style="width:${bm.intelligence_index || 0}%"></div></div>
+        <div class="${bestQuality ? 'bg-purple-500/[0.04] rounded-lg p-2' : 'p-2'}">
+          <div class="flex items-center justify-between text-[10px] mb-1">
+            <span class="text-zinc-400">Quality</span>
+            <span class="font-mono text-base ${bestQuality ? 'text-purple-400 font-bold' : color}">${m.quality_score != null ? Math.round(m.quality_score) : '—'}</span>
           </div>
-          <div class="${bestCode ? 'bg-blue-500/[0.04] rounded-lg p-1.5' : 'p-1.5'}">
-            <div class="flex items-center justify-between text-[10px] mb-1">
-              <span class="text-zinc-400">Coding</span>
-              <span class="font-mono ${bestCode ? 'text-blue-400 font-bold' : 'text-zinc-500'}">${bm.coding_index != null ? Math.round(bm.coding_index) : '-'}</span>
-            </div>
-            <div class="mm-bench-bar-track"><div class="mm-bench-bar-fill coding" style="width:${bm.coding_index || 0}%"></div></div>
-          </div>
-          <div class="${bestAgent ? 'bg-emerald-500/[0.04] rounded-lg p-1.5' : 'p-1.5'}">
-            <div class="flex items-center justify-between text-[10px] mb-1">
-              <span class="text-zinc-400">Agentic</span>
-              <span class="font-mono ${bestAgent ? 'text-emerald-400 font-bold' : 'text-zinc-500'}">${bm.agentic_index != null ? Math.round(bm.agentic_index) : '-'}</span>
-            </div>
-            <div class="mm-bench-bar-track"><div class="mm-bench-bar-fill agentic" style="width:${bm.agentic_index || 0}%"></div></div>
-          </div>
+          <div class="mm-bench-bar-track"><div class="mm-bench-bar-fill intel" style="width:${m.quality_score || 0}%"></div></div>
+          ${m.quality_source ? `<div class="text-[8px] text-zinc-600 font-mono mt-1">via ${escapeHtml(m.quality_source)}</div>` : ''}
         </div>
         <div class="text-[10px] text-zinc-500 pt-2 border-t border-white/5">
-          Context: ${m.context ? `${Math.round(m.context / 1000)}k` : '-'} ${m.free ? '· FREE' : ''}
+          Context: ${this._contextBadge(m.context, m.context_source)} ${m.free ? '· FREE' : ''}
         </div>
       </div>`;
       })

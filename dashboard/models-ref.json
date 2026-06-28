@@ -101,7 +101,7 @@
   {
     "model": "qwen/qwen3-32b",
     "provider": "groq",
-    "context": null,
+    "context": 131072,
     "rpm": 60,
     "rpd": 1000,
     "tpd": 500000,
@@ -110,7 +110,7 @@
   {
     "model": "llama-3.1-8b-instant",
     "provider": "groq",
-    "context": null,
+    "context": 131072,
     "rpm": 30,
     "rpd": 14400,
     "tpd": 500000,
@@ -119,7 +119,7 @@
   {
     "model": "meta-llama/llama-4-scout-17b-16e-instruct",
     "provider": "groq",
-    "context": null,
+    "context": 131072,
     "rpm": 30,
     "rpd": 1000,
     "tpd": 500000,
@@ -128,7 +128,7 @@
   {
     "model": "llama-3.3-70b-versatile",
     "provider": "groq",
-    "context": null,
+    "context": 131072,
     "rpm": 30,
     "rpd": 1000,
     "tpd": 100000,
@@ -137,7 +137,7 @@
   {
     "model": "openai/gpt-oss-120b",
     "provider": "groq",
-    "context": null,
+    "context": 131072,
     "rpm": 30,
     "rpd": 1000,
     "tpd": 200000,
@@ -146,7 +146,7 @@
   {
     "model": "mistral-large-2411",
     "provider": "mistral",
-    "context": null,
+    "context": 131072,
     "rpm": 26,
     "rpd": null,
     "tpd": null,
@@ -155,7 +155,7 @@
   {
     "model": "codestral-2508",
     "provider": "mistral",
-    "context": null,
+    "context": 262144,
     "rpm": 125,
     "rpd": null,
     "tpd": null,
@@ -164,7 +164,7 @@
   {
     "model": "ministral-8b-2512",
     "provider": "mistral",
-    "context": null,
+    "context": 131072,
     "rpm": 188,
     "rpd": null,
     "tpd": null,
@@ -191,7 +191,7 @@
   {
     "model": "gemma-4-31b-it",
     "provider": "google",
-    "context": null,
+    "context": 262144,
     "rpm": 15,
     "rpd": 1500,
     "tpd": null,

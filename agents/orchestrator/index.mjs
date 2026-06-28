@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { writeFileSync } from 'node:fs';
+import { setImmediate } from 'node:timers';
 
 import { getDurableState } from '../../src/core/durable-state.mjs';
 import { TaskManager } from '../../src/core/task-manager.mjs';
@@ -128,7 +128,7 @@ async function main() {
           try {
             await handler(context);
           } catch (e) {
-            context.log(`Error in phase ${nextPhase}: ${e.message}`);
+            context.log(`Error in phase ${nextPhase}: ${e.stack || e.message}`);
           }
         } else {
           context.log(`Unknown phase: ${nextPhase}`);

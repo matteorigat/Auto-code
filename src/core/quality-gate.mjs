@@ -14,16 +14,6 @@ export class QualityGate {
   constructor(projectPath) {
     this.projectPath = projectPath;
     this.configPath = join(projectPath, '.hydra', 'gate.json');
-    this.defaultChecks = [
-      {
-        name: 'typecheck',
-        cmd: 'npx tsc --noEmit || npm run typecheck',
-        timeout: 60,
-        required: true,
-      },
-      { name: 'test', cmd: 'npm test', timeout: 120, required: true },
-      { name: 'lint', cmd: 'npm run lint', timeout: 60, required: false },
-    ];
   }
 
   async run({ appPort = null, cwd = null, taskId = null } = {}) {
@@ -114,7 +104,7 @@ export class QualityGate {
     }
 
     const bus = getAppBus();
-    bus.telemetry('quality.gate_run', 'safety', `Quality Gate: ${passed ? 'PASSED' : 'FAILED'}`, {
+    bus.telemetry('log', 'orchestrator', `Quality Gate: ${passed ? 'PASSED' : 'FAILED'}`, {
       level: passed ? 'info' : 'warn',
       data: { passed, checks: results.length, taskId: taskId || null },
     });

@@ -14,6 +14,25 @@ export function createAliasesRouter() {
     'tier-1-trivial': 'Summarization and helpers',
   };
 
+  router.get('/model-config', (req, res, next) => {
+    try {
+      const configPath = join(CONFIG_DIR, 'litellm.yaml');
+      if (!existsSync(configPath)) return res.json([]);
+
+      const raw = readFileSync(configPath, 'utf8');
+      const parsed = parse(raw);
+      const modelList = parsed.model_list || [];
+
+      const actualModels = modelList.filter(
+        (m) => m && m.model_name && !m.model_name.startsWith('openai/tier-'),
+      );
+
+      res.json(actualModels);
+    } catch (e) {
+      next(e);
+    }
+  });
+
   router.get('/model-aliases', (req, res, next) => {
     try {
       const configPath = join(CONFIG_DIR, 'litellm.yaml');
@@ -101,14 +120,35 @@ export function createAliasesRouter() {
         }
       }
 
-      if (swapPrimaryWith !== undefined && primaryModel !== null) {
+      if (swapPrimaryWith !== undefined && swapPrimaryWith >= 0 && primaryModel !== null) {
         const primaryEntry = (parsed.model_list || []).find((m) => m.model_name === fullAlias);
         const fbAlias = newOrder[swapPrimaryWith];
         const fbEntry = (parsed.model_list || []).find((m) => m.model_name === fbAlias);
         if (primaryEntry && fbEntry) {
           fbEntry.litellm_params.model = primaryEntry.litellm_params.model;
           primaryEntry.litellm_params.model = primaryModel;
+        } else if (fbEntry && !primaryEntry) {
+          if (!parsed.model_list) parsed.model_list = [];
+          parsed.model_list.push({
+            model_name: fullAlias,
+            litellm_params: { model: primaryModel },
+            model_info: { provider: primaryModel.split('/')[0] || 'unknown' },
+          });
         }
+      } else if (primaryModel) {
+        const primaryEntry = (parsed.model_list || []).find((m) => m.model_name === fullAlias);
+        if (!primaryEntry) {
+          if (!parsed.model_list) parsed.model_list = [];
+          parsed.model_list.push({
+            model_name: fullAlias,
+            litellm_params: { model: primaryModel },
+            model_info: { provider: primaryModel.split('/')[0] || 'unknown' },
+          });
+        } else {
+          primaryEntry.litellm_params.model = primaryModel;
+        }
+      } else {
+        parsed.model_list = (parsed.model_list || []).filter((m) => m.model_name !== fullAlias);
       }
 
       const allTiers = ['tier-4-planner', 'tier-3-builder', 'tier-2-hunter', 'tier-1-trivial'];
@@ -128,7 +168,13 @@ export function createAliasesRouter() {
       });
       const seen = new Set();
       parsed.model_list = (parsed.model_list || []).filter((m) => {
-        if (!referenced.has(m.model_name) || seen.has(m.model_name)) return false;
+        if (!m || !m.model_name) return false;
+        if (m.model_name.startsWith('openai/tier-')) {
+          if (!referenced.has(m.model_name) || seen.has(m.model_name)) return false;
+          seen.add(m.model_name);
+          return true;
+        }
+        if (seen.has(m.model_name)) return false;
         seen.add(m.model_name);
         return true;
       });

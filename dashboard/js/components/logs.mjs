@@ -1,3 +1,4 @@
+/* global navigator */
 import { escapeHtml } from '../utils/sanitize.mjs';
 import { formatDate } from '../utils/format.mjs';
 
@@ -9,6 +10,7 @@ const SOURCE_COLORS = {
   orchestrator: 'text-rose-400',
   agent: 'text-cyan-400',
   bridge: 'text-blue-400',
+  quota: 'text-teal-400',
 };
 
 function sourceColor(source) {
@@ -43,6 +45,7 @@ export function mountLogs(container, state) {
           <option value="opencode">OpenCode Serve</option>
           <option value="telegram">Telegram Bot</option>
           <option value="dashboard">Dashboard</option>
+          <option value="quota">Quota Manager</option>
         </select>
 
         <!-- Level Filter -->
@@ -126,9 +129,11 @@ export function mountLogs(container, state) {
     }
   });
 
+  let activeDomElements = [];
+  let lastProcessedLogId = null;
+
   copyBtn.addEventListener('click', () => {
-    const entries = logScroll.querySelectorAll('.log-entry');
-    const lines = Array.from(entries).map((el) => {
+    const lines = activeDomElements.map((el) => {
       const time = el.querySelector('span:first-child')?.textContent || '';
       const source = el.querySelector('span:nth-child(2)')?.textContent || '';
       const msg = el.querySelector('span:nth-child(3)')?.textContent || '';
@@ -156,6 +161,8 @@ export function mountLogs(container, state) {
   clearBtn.addEventListener('click', () => {
     state.clearLogs();
     displayedLogIds.clear();
+    activeDomElements = [];
+    lastProcessedLogId = null;
     logScroll.innerHTML =
       '<div class="text-center text-zinc-600 py-12 text-sm select-none">No logs matching filters</div>';
     autoscrollEnabled = true;
@@ -180,7 +187,7 @@ export function mountLogs(container, state) {
     autoscrollBtn.classList.add('hidden');
   });
 
-  const getLogHTML = (log) => {
+  const createLogElement = (log) => {
     let colorClass = 'text-zinc-300';
     if (log.level === 'error') colorClass = 'text-danger font-medium';
     else if (log.level === 'warn') colorClass = 'text-warning';
@@ -188,20 +195,22 @@ export function mountLogs(container, state) {
 
     let messageHTML = escapeHtml(log.message);
     if (searchQuery) {
-      const regex = new RegExp(`(${searchQuery.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi');
+      const regex = new RegExp(`(${searchQuery.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi');
       messageHTML = messageHTML.replace(
         regex,
         '<mark class="bg-primary/40 text-white rounded px-0.5">$1</mark>',
       );
     }
 
-    return `
-      <div class="log-entry flex items-start gap-3 py-0.5 px-1 rounded transition duration-150" data-id="${log.id}">
-        <span class="text-zinc-600 shrink-0 select-none">${formatDate(log.ts).substring(11, 19)}</span>
-        <span class="font-bold shrink-0 w-24 select-none ${sourceColor(log.source)}">[${escapeHtml(log.source)}]</span>
-        <span class="break-all whitespace-pre-wrap ${colorClass}">${messageHTML}</span>
-      </div>
+    const div = document.createElement('div');
+    div.className = 'log-entry flex items-start gap-3 py-0.5 px-1 rounded transition duration-150';
+    div.dataset.id = log.id;
+    div.innerHTML = `
+      <span class="text-zinc-600 shrink-0 select-none">${formatDate(log.ts).substring(11, 19)}</span>
+      <span class="font-bold shrink-0 w-24 select-none ${sourceColor(log.source)}">[${escapeHtml(log.source)}]</span>
+      <span class="break-all whitespace-pre-wrap ${colorClass}">${messageHTML}</span>
     `;
+    return div;
   };
 
   const matchesFilters = (log) => {
@@ -219,20 +228,24 @@ export function mountLogs(container, state) {
   const rebuildLogs = () => {
     if (state.activeTab !== 'logs') return;
     displayedLogIds.clear();
+    activeDomElements = [];
     const filteredLogs = [...state.logs].reverse().filter(matchesFilters);
 
-    logScroll.innerHTML = filteredLogs
-      .map((log) => {
-        displayedLogIds.add(log.id);
-        return getLogHTML(log);
-      })
-      .join('');
-
+    logScroll.innerHTML = '';
     if (filteredLogs.length === 0) {
       logScroll.innerHTML =
         '<div class="text-center text-zinc-600 py-12 text-sm select-none">No logs matching filters</div>';
       autoscrollBtn.classList.add('hidden');
     } else {
+      const fragment = document.createDocumentFragment();
+      for (const log of filteredLogs) {
+        displayedLogIds.add(log.id);
+        const el = createLogElement(log);
+        fragment.appendChild(el);
+        activeDomElements.push(el);
+      }
+      logScroll.appendChild(fragment);
+
       if (autoscrollEnabled) {
         logScroll.scrollTop = logScroll.scrollHeight;
         autoscrollBtn.classList.add('hidden');
@@ -246,30 +259,62 @@ export function mountLogs(container, state) {
     if (s.activeTab !== 'logs') return;
     if (isPaused) return;
 
-    let hasNewLog = false;
-    const logsReversed = [...s.logs].reverse();
+    const newestLog = s.logs[0];
+    if (newestLog && newestLog.id === lastProcessedLogId) {
+      return;
+    }
+    const prevLastProcessedLogId = lastProcessedLogId;
+    if (newestLog) {
+      lastProcessedLogId = newestLog.id;
+    } else {
+      lastProcessedLogId = null;
+    }
 
-    for (const log of logsReversed) {
+    let newLogs;
+    if (prevLastProcessedLogId) {
+      const idx = s.logs.findIndex((log) => log.id === prevLastProcessedLogId);
+      if (idx !== -1) {
+        newLogs = s.logs.slice(0, idx).reverse();
+      } else {
+        rebuildLogs();
+        return;
+      }
+    } else {
+      rebuildLogs();
+      return;
+    }
+
+    if (newLogs.length === 0) return;
+
+    let hasNewLog = false;
+    const fragment = document.createDocumentFragment();
+
+    for (const log of newLogs) {
       if (displayedLogIds.has(log.id)) continue;
 
       displayedLogIds.add(log.id);
       if (matchesFilters(log)) {
-        if (displayedLogIds.size === 1 && logScroll.querySelector('.text-zinc-600')) {
+        if (activeDomElements.length === 0 && logScroll.querySelector('.text-zinc-600')) {
           logScroll.innerHTML = '';
         }
 
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = getLogHTML(log);
-        logScroll.appendChild(tempDiv.firstElementChild);
+        const el = createLogElement(log);
+        fragment.appendChild(el);
+        activeDomElements.push(el);
         hasNewLog = true;
       }
     }
 
-    const childEntries = logScroll.querySelectorAll('.log-entry');
-    if (childEntries.length > 1000) {
-      for (let i = 0; i < childEntries.length - 1000; i++) {
-        displayedLogIds.delete(childEntries[i].dataset.id);
-        childEntries[i].remove();
+    if (hasNewLog) {
+      logScroll.appendChild(fragment);
+    }
+
+    if (activeDomElements.length > 500) {
+      const toRemoveCount = activeDomElements.length - 500;
+      const toRemove = activeDomElements.splice(0, toRemoveCount);
+      for (const el of toRemove) {
+        displayedLogIds.delete(el.dataset.id);
+        el.remove();
       }
     }
 

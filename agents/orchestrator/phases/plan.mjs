@@ -1,8 +1,11 @@
 import { basename, join } from 'node:path';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { TaskManager } from '../../../src/core/task-manager.mjs';
+import { TierSelector } from '../../../src/core/tier-selector.mjs';
 
 export async function handlePlan(context) {
-  const { tasks, stream, log, updateStatus, projectPath, state } = context;
+  const { tasks, stream, log, updateStatus, projectPath, state, safety } = context;
+  const { AgentRuntime } = await import('../../runtime.mjs');
 
   log(`[PLAN] Running PLAN phase...`);
   const currentState = state.get();
@@ -36,15 +39,51 @@ export async function handlePlan(context) {
     log(`[PLAN] Planning task: ${task.id} ${task.title}`);
 
     // Init workspace for task
-    const projectDir = _resolveProjectDir(task, projectPath, tasks);
+    const projectDir = _resolveProjectDir(task, projectPath);
     task.workspacePath = projectDir;
     task._projectSlug = basename(projectDir);
 
     tasks._syncProjectFiles(task);
 
-    // In a full implementation, we'd run task-planner AgentRuntime here
-    // to generate SDD artifacts if they are missing.
-    // For now, we consider it planned.
+    // Dynamic SDD Planning Pipeline: task-planner -> architect -> reviewer
+    const localTasks = new TaskManager({ projectPath: projectDir });
+    const tierSelector = new TierSelector();
+    const tier = tierSelector.select('PLAN');
+    tierSelector.applyTierConfig(tier, projectDir);
+
+    log(`[PLAN] [${task.id}] Running task-planner to generate tests and details`);
+    const taskPlanner = new AgentRuntime({
+      projectPath: projectDir,
+      agentType: 'task-planner',
+      task,
+      safety,
+      stream,
+      tasks: localTasks,
+    });
+    await taskPlanner.run(300000); // 5 min
+
+    log(`[PLAN] [${task.id}] Running architect to generate technical proposal`);
+    const architect = new AgentRuntime({
+      projectPath: projectDir,
+      agentType: 'architect',
+      task,
+      safety,
+      stream,
+      tasks: localTasks,
+    });
+    await architect.run(300000); // 5 min
+
+    log(`[PLAN] [${task.id}] Running reviewer to review technical proposal`);
+    const reviewer = new AgentRuntime({
+      projectPath: projectDir,
+      agentType: 'reviewer',
+      task,
+      safety,
+      stream,
+      tasks: localTasks,
+    });
+    await reviewer.run(300000); // 5 min
+
     tasksToExec.push(task.id);
   }
 
@@ -57,7 +96,7 @@ export async function handlePlan(context) {
 }
 
 // Minimal resolver
-function _resolveProjectDir(story, projectPath, tasks) {
+function _resolveProjectDir(story, projectPath) {
   if (story.workspacePath && existsSync(story.workspacePath)) return story.workspacePath;
   if (story._projectSlug) return join(projectPath, 'projects', story._projectSlug);
   return projectPath;

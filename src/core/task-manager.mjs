@@ -120,6 +120,9 @@ export class TaskManager {
           if (nt.status === 'completed') local.passes = true;
           if (nt.status === 'blocked' && !local.passes) local.passes = false;
         }
+        if (nt.dependsOn) local.dependsOn = nt.dependsOn;
+        if (nt.dependencies) local.dependencies = nt.dependencies;
+        if (nt._deps) local._deps = nt._deps;
       } else {
         if (nt.excluded) continue;
         // Determine project slug from Notion tag
@@ -157,6 +160,9 @@ export class TaskManager {
           pageId: nt.pageId,
           blockId: nt.blockId,
           _projectSlug: projectSlug,
+          dependsOn: nt.dependsOn || undefined,
+          dependencies: nt.dependencies || undefined,
+          _deps: nt._deps || undefined,
         });
       }
     }
@@ -178,13 +184,18 @@ export class TaskManager {
           s.title + ' ' + (s.description || ''),
         );
       return stories.map((s) => {
-        const deps = [];
-        if (isUI(s)) {
+        let explicitDeps = s.dependsOn || s.dependencies || s._deps || [];
+        if (!Array.isArray(explicitDeps)) {
+          explicitDeps = [String(explicitDeps)];
+        }
+        const deps = new Set(explicitDeps.map(String));
+
+        if (deps.size === 0 && isUI(s)) {
           for (const other of stories) {
-            if (other.id !== s.id && isInfra(other)) deps.push(String(other.id));
+            if (other.id !== s.id && isInfra(other)) deps.add(String(other.id));
           }
         }
-        return { ...s, _deps: deps };
+        return { ...s, _deps: Array.from(deps) };
       });
     };
 

@@ -171,7 +171,7 @@ export class TierSelector {
         },
       };
     }
-    const config = {
+    const opencodeConfig = {
       $schema: existing.$schema || 'https://opencode.ai/config.json',
       permission: existing.permission || 'allow',
       model: `openai/${tier}`,
@@ -186,7 +186,7 @@ export class TierSelector {
     if (!existsSync(configDir)) {
       mkdirSync(configDir, { recursive: true });
     }
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
-    console.log(`[TierSelector] set model=${config.model} for ${projectPath}`);
+    writeFileSync(configPath, JSON.stringify(opencodeConfig, null, 2) + '\n');
+    console.log(`[TierSelector] set model=${opencodeConfig.model} for ${projectPath}`);
   }
 }

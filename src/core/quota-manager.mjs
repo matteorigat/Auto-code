@@ -146,7 +146,7 @@ export class QuotaManager {
     this._cooldowns[key] = NOW() + durationMs;
     console.warn(`[QuotaManager] ${key} cooldown for ${durationMs}ms`);
     const bus = getAppBus();
-    bus.telemetry('cooldown.started', 'quota', `${key} cooldown for ${durationMs}ms`, {
+    bus.telemetry('log', 'quota', `${key} cooldown for ${durationMs}ms`, {
       level: 'warn',
       data: { provider: key, durationMs, reason: 'rate_limit' },
     });

@@ -36,6 +36,14 @@ function requireEnv(key) {
   return process.env[key];
 }
 
+// Sync Kilo API Keys
+if (process.env.KILOCODE_API_KEY && !process.env.KILO_API_KEY) {
+  process.env.KILO_API_KEY = process.env.KILOCODE_API_KEY;
+}
+if (process.env.KILO_API_KEY && !process.env.KILOCODE_API_KEY) {
+  process.env.KILOCODE_API_KEY = process.env.KILO_API_KEY;
+}
+
 const config = {
   telegram: {
     botToken: requireEnv('TELEGRAM_BOT_TOKEN'),
@@ -70,6 +78,7 @@ const config = {
       xai: process.env.XAI_API_KEY || '',
       gemini: process.env.GEMINI_API_KEY || '',
       kilocode: process.env.KILOCODE_API_KEY || '',
+      kilo: process.env.KILO_API_KEY || '',
       artificialAnalysis: process.env.ARTIFICIAL_ANALYSIS_API_KEY || '',
       opencode: process.env.OPENCODE_API_KEY || '',
       ollama: process.env.OLLAMA_API_KEY || '',

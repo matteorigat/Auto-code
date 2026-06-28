@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -50,9 +50,15 @@ export class ProcessManager {
         env: { ...process.env },
       });
     } else {
-      const LITELLM_BIN = join(homedir(), '.local', 'bin', 'litellm');
-      if (!existsSync(LITELLM_BIN)) {
-        console.warn('⚠️ litellm non trovato in ~/.local/bin, salto');
+      let LITELLM_BIN = '';
+      try {
+        LITELLM_BIN = execSync('which litellm', { encoding: 'utf8' }).trim();
+      } catch (e) {
+        LITELLM_BIN = join(homedir(), '.local', 'bin', 'litellm');
+      }
+
+      if (!LITELLM_BIN || !existsSync(LITELLM_BIN)) {
+        console.warn('⚠️ litellm non trovato in PATH o ~/.local/bin, salto');
         return;
       }
       console.log('🚀 Starting LiteLLM proxy on :4000...');
@@ -81,19 +87,20 @@ export class ProcessManager {
     this.litellmProc.stdout.on('data', (d) => {
       process.stdout.write(`[litellm] ${d}`);
       const msg = d.toString().trim();
-      bus.telemetry('system.litellm.out', 'bridge', msg.slice(0, 500), { level: logLevel(msg) });
+      bus.telemetry('log', 'litellm', msg.slice(0, 500), { level: logLevel(msg) });
     });
     this.litellmProc.stderr.on('data', (d) => {
       process.stderr.write(`[litellm-err] ${d}`);
       const msg = d.toString().trim();
-      bus.telemetry('system.litellm.out', 'bridge', msg.slice(0, 500), { level: logLevel(msg) });
+      bus.telemetry('log', 'litellm', msg.slice(0, 500), { level: logLevel(msg) });
     });
     this.litellmProc.on('exit', async (code) => {
       console.log(`⚠️ LiteLLM terminato (codice ${code})`);
-      bus.telemetry('system.litellm.status', 'bridge', `LiteLLM exited (code ${code})`, {
+      bus.telemetry('process.status', 'bridge', `LiteLLM exited (code ${code})`, {
         level: 'warn',
         data: { name: 'litellm', status: 'stopped', code },
       });
+      bus.telemetry('log', 'litellm', `LiteLLM exited (code ${code})`, { level: 'warn' });
       this.litellmProc = null;
 
       if (this.isShuttingDown || this.manualStopLiteLLM) {
@@ -149,16 +156,16 @@ export class ProcessManager {
     this.dashboardProc.stdout.on('data', (d) => {
       process.stdout.write(`[dashboard] ${d}`);
       const msg = d.toString().trim();
-      telemetry[logLevel(msg)]('dashboard', msg);
+      bus.telemetry('log', 'dashboard', msg, { level: logLevel(msg) });
     });
     this.dashboardProc.stderr.on('data', (d) => {
       process.stderr.write(`[dashboard-err] ${d}`);
       const msg = d.toString().trim();
-      telemetry[logLevel(msg)]('dashboard', msg);
+      bus.telemetry('log', 'dashboard', msg, { level: logLevel(msg) });
     });
     this.dashboardProc.on('error', (err) => {
       console.error('[dashboard] spawn error:', err.message);
-      telemetry.error('dashboard', `spawn error: ${err.message}`);
+      bus.telemetry('log', 'dashboard', `spawn error: ${err.message}`, { level: 'error' });
     });
     this.dashboardProc.on('exit', (code) => {
       console.log(`dashboard terminato (codice ${code})`);
@@ -166,6 +173,7 @@ export class ProcessManager {
         level: 'warn',
         data: { name: 'dashboard', status: 'stopped', code },
       });
+      bus.telemetry('log', 'dashboard', `Dashboard exited (code ${code})`, { level: 'warn' });
       this.dashboardProc = null;
       if (!this.isShuttingDown) {
         setTimeout(() => this.startDashboard(), 2000);
@@ -251,18 +259,19 @@ export class ProcessManager {
     this.opencodeProc.stdout.on('data', (d) => {
       process.stdout.write(`[opencode] ${d}`);
       const msg = d.toString().trim();
-      bus.telemetry('system.opencode.out', 'bridge', msg.slice(0, 500), { level: logLevel(msg) });
+      bus.telemetry('log', 'opencode', msg.slice(0, 500), { level: logLevel(msg) });
     });
     this.opencodeProc.stderr.on('data', (d) => {
       process.stderr.write(`[opencode-err] ${d}`);
       const msg = d.toString().trim();
-      bus.telemetry('system.opencode.err', 'bridge', msg.slice(0, 500), { level: logLevel(msg) });
+      bus.telemetry('log', 'opencode', msg.slice(0, 500), { level: logLevel(msg) });
     });
     this.opencodeProc.on('exit', async (code) => {
       bus.telemetry('process.status', 'bridge', `Opencode exited (code ${code})`, {
         level: 'warn',
         data: { name: 'opencode', status: 'stopped', code },
       });
+      bus.telemetry('log', 'opencode', `Opencode exited (code ${code})`, { level: 'warn' });
       this.opencodeProc = null;
       this.healthOk = false;
 

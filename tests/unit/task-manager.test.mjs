@@ -55,4 +55,17 @@ describe('TaskManager', () => {
     tasks.updateTaskStatus('t1', 'in_progress');
     expect(tasks.findById('t1').status).toBe('in_progress');
   });
+
+  it('correctly resolves explicit dependencies', async () => {
+    mockNotion.pullTasks.mockResolvedValue([
+      { storyId: 't1', title: 'Infra Task', status: 'todo', dependsOn: ['t2'] },
+      { storyId: 't2', title: 'UI Task', status: 'todo' },
+    ]);
+
+    const sorted = await tasks.loadTasks();
+    const t1Idx = sorted.findIndex(t => t.id === 't1');
+    const t2Idx = sorted.findIndex(t => t.id === 't2');
+    expect(t2Idx).toBeLessThan(t1Idx);
+    expect(sorted[t1Idx]._deps).toContain('t2');
+  });
 });

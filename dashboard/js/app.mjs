@@ -121,7 +121,7 @@ async function fetchSnapshot() {
     try {
       const rp = rangeToParams(state.timeRange);
       const rangeQuery = `?from=${encodeURIComponent(rp.from)}&to=${encodeURIComponent(rp.to)}`;
-      const [summaryRes, bridgeRes, sessionsRes, sysRes, quotaRes, routingRes, sotaRes, dailyRes] =
+      const [summaryRes, bridgeRes, sessionsRes, sysRes, quotaRes, routingRes, sotaRes, dailyRes, logsRes] =
         await Promise.all([
           api.get(`/summary${rangeQuery}`).catch(() => null),
           api.get('/bridge-state').catch(() => null),
@@ -131,6 +131,7 @@ async function fetchSnapshot() {
           api.get('/routing-chain').catch(() => null),
           api.get('/sota-stats').catch(() => null),
           api.get(`/daily${rangeQuery}`).catch(() => null),
+          api.get('/logs?limit=500&type=log').catch(() => null),
         ]);
 
       if (summaryRes) {
@@ -146,6 +147,9 @@ async function fetchSnapshot() {
       if (dailyRes) {
         state.dailyData = dailyRes;
         burnChart.update(dailyRes);
+      }
+      if (logsRes && logsRes.events) {
+        state.bulkAddEvents(logsRes.events);
       }
 
       state.notify();
