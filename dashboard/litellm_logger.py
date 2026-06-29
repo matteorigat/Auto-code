@@ -1,9 +1,13 @@
 import os
 import json
-import time
+from datetime import datetime, timezone
 from litellm.integrations.custom_logger import CustomLogger
 
 LOG_FILE = os.path.join(os.path.dirname(__file__), "..", ".hydra", "usage_logs.jsonl")
+
+def _ms_ts():
+    now = datetime.now(timezone.utc)
+    return now.strftime('%Y-%m-%dT%H:%M:%S.') + f"{now.microsecond // 1000:03d}Z"
 
 class SQLiteCompatibleLogger(CustomLogger):
     def _send_metrics(self, kwargs, response_obj, start_time, end_time):
@@ -68,10 +72,25 @@ class SQLiteCompatibleLogger(CustomLogger):
                 try:
                     if hasattr(response_obj, "choices") and response_obj.choices:
                         response_text = response_obj.choices[0].message.content or ""
+                    elif hasattr(response_obj, "output") and response_obj.output:
+                        output_item = response_obj.output[0]
+                        if hasattr(output_item, "content") and output_item.content:
+                            c = output_item.content[0] if isinstance(output_item.content, list) else output_item.content
+                            response_text = c.text if hasattr(c, "text") else (c.get("text", "") if isinstance(c, dict) else "")
+                        elif isinstance(output_item, dict):
+                            content_list = output_item.get("content", [])
+                            if content_list and isinstance(content_list, list):
+                                response_text = content_list[0].get("text", "")
                     elif isinstance(response_obj, dict):
                         choices = response_obj.get("choices", [])
                         if choices:
                             response_text = choices[0].get("message", {}).get("content", "")
+                        else:
+                            output_list = response_obj.get("output", [])
+                            if output_list:
+                                content_list = output_list[0].get("content", [])
+                                if content_list and isinstance(content_list, list):
+                                    response_text = content_list[0].get("text", "")
                 except Exception:
                     response_text = str(response_obj)
 
@@ -79,11 +98,11 @@ class SQLiteCompatibleLogger(CustomLogger):
                 "type": "model.call",
                 "source": "litellm",
                 "message": f"Model call: {provider}/{model_id}",
-                "ts": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                "ts": _ms_ts(),
                 "sessionId": kwargs.get("litellm_call_id", ""),
                 "data": {
                     "type": "model.completed",
-                    "ts": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                    "ts": _ms_ts(),
                     "provider": provider,
                     "modelId": model_id,
                     "sessionId": kwargs.get("litellm_call_id", ""),
@@ -155,7 +174,7 @@ class SQLiteCompatibleLogger(CustomLogger):
                 "type": "log",
                 "source": "litellm",
                 "message": f"Model failed (fallback triggered if configured): {provider}/{model_id} - {error_str}",
-                "ts": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                "ts": _ms_ts(),
                 "sessionId": kwargs.get("litellm_call_id", ""),
                 "level": "warn",
                 "data": {

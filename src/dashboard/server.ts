@@ -1,0 +1,332 @@
+import http from 'node:http';
+import express, { Request, Response, NextFunction } from 'express';
+import * as os from 'node:os';
+import { readFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { MetricsCollector } from './collector.js';
+import { TelemetryStore } from './telemetry-store.js';
+import { DashboardWebSocket } from './websocket.js';
+import { createMetricsRouter } from './routes/metrics.js';
+import { createSystemRouter } from './routes/system.js';
+import { createProvidersRouter } from './routes/providers.js';
+import { createLogsRouter } from './routes/logs.js';
+import { createCommandsRouter, SystemController } from './routes/commands.js';
+import { createSettingsRouter } from './routes/settings.js';
+import { createStaticRouter } from './routes/static.js';
+import config from '../config/index.js';
+
+const execFileAsync = promisify(execFile);
+
+export class DashboardServer {
+  port: number;
+  app: express.Express;
+  collector: MetricsCollector;
+  telemetryStore: TelemetryStore;
+  systemController: SystemController;
+  server?: http.Server;
+  wsServer?: DashboardWebSocket;
+  _sysInfoInterval?: ReturnType<typeof setInterval>;
+  _lastDiskCheck?: number;
+  _lastDiskTotal?: number;
+  _lastDiskUsed?: number;
+  _lastDiskPct?: number;
+
+  constructor(port: number = 8081, systemController: SystemController | null = null) {
+    this.port = port;
+    this.app = express();
+    this.collector = new MetricsCollector();
+    this.telemetryStore = new TelemetryStore(this.collector);
+    this.systemController = systemController ?? ({} as SystemController);
+
+    this._setupMiddleware();
+    this._setupRoutes();
+    this._setupErrorHandler();
+  }
+
+  _setupMiddleware(): void {
+    this.app.use(express.json());
+
+    const origin =
+      (config.dashboard as Record<string, unknown>)?.corsOrigin || `http://localhost:${this.port}`;
+    this.app.use((req: Request, res: Response, next: NextFunction) => {
+      res.header('Access-Control-Allow-Origin', origin as string);
+      res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+      if (req.method === 'OPTIONS') return res.sendStatus(204);
+      next();
+    });
+
+    // Transparent proxy for OpenCode requests targeting LiteLLM,
+    // intercepting response payloads to override/mask model name prefixes.
+    this.app.all('/api/opencode/v1/*', async (req: Request, res: Response) => {
+      const subPath = req.params[0] || '';
+      const targetUrl = `http://127.0.0.1:4000/v1/${subPath}`;
+
+      const headers: Record<string, string> = {};
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (key.toLowerCase() !== 'host' && typeof value === 'string') {
+          headers[key] = value;
+        }
+      }
+
+      try {
+        const isPost = req.method === 'POST';
+        const fetchOptions: RequestInit = {
+          method: req.method,
+          headers,
+        };
+        if (isPost && req.body) {
+          fetchOptions.body = JSON.stringify(req.body);
+        }
+
+        const response = await fetch(targetUrl, fetchOptions);
+
+        response.headers.forEach((value, key) => {
+          if (!['content-encoding', 'transfer-encoding', 'content-length'].includes(key.toLowerCase())) {
+            res.setHeader(key, value);
+          }
+        });
+        res.status(response.status);
+
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('text/event-stream')) {
+          if (!response.body) {
+            return res.end();
+          }
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          const encoder = new TextEncoder();
+
+          let pendingBuffer = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            pendingBuffer += decoder.decode(value, { stream: true });
+            const lines = pendingBuffer.split('\n');
+            pendingBuffer = lines.pop() || '';
+
+            const modifiedLines = lines.map((line) => {
+              if (line.startsWith('data: ')) {
+                const dataStr = line.slice(6).trim();
+                if (dataStr && dataStr !== '[DONE]') {
+                  try {
+                    const dataObj = JSON.parse(dataStr);
+                    if (dataObj.model) {
+                      const reqModel = req.body?.model || 'gpt-4o';
+                      dataObj.model = reqModel;
+                    }
+                    return `data: ${JSON.stringify(dataObj)}`;
+                  } catch {
+                    return line;
+                  }
+                }
+              }
+              return line;
+            });
+
+            res.write(encoder.encode(modifiedLines.join('\n') + '\n'));
+          }
+
+          if (pendingBuffer) {
+            let line = pendingBuffer;
+            if (line.startsWith('data: ')) {
+              const dataStr = line.slice(6).trim();
+              if (dataStr && dataStr !== '[DONE]') {
+                try {
+                  const dataObj = JSON.parse(dataStr);
+                  if (dataObj.model) {
+                    const reqModel = req.body?.model || 'gpt-4o';
+                    dataObj.model = reqModel;
+                  }
+                  line = `data: ${JSON.stringify(dataObj)}`;
+                } catch {
+                  // ignore
+                }
+              }
+            }
+            res.write(encoder.encode(line));
+          }
+          return res.end();
+        } else {
+          const resText = await response.text();
+          try {
+            const dataObj = JSON.parse(resText);
+            if (dataObj.model) {
+              const reqModel = req.body?.model || 'gpt-4o';
+              dataObj.model = reqModel;
+            }
+            res.json(dataObj);
+          } catch {
+            res.send(resText);
+          }
+        }
+      } catch (err: unknown) {
+        console.error('[OpencodeProxy] Error proxying request:', (err as Error).message);
+        if (!res.headersSent) {
+          res.status(500).json({ error: (err as Error).message });
+        }
+      }
+    });
+
+    this.app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+      if (req.path.startsWith('/internal/')) {
+        const ip = req.ip || req.socket.remoteAddress;
+        if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return next();
+        return res.status(403).json({ error: 'Internal routes are localhost-only' });
+      }
+
+      const token = (config.dashboard as Record<string, unknown>)?.token as string | undefined;
+      if (!token) return next();
+
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.split(' ')[1] !== token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      next();
+    });
+  }
+
+  _setupRoutes(): void {
+    const deps = { collector: this.collector, telemetryStore: this.telemetryStore, config };
+    this.app.use('/', createStaticRouter());
+    this.app.use('/api', createMetricsRouter(deps));
+    this.app.use('/api', createSystemRouter(deps));
+    this.app.use('/api', createProvidersRouter(deps));
+    this.app.use('/api', createLogsRouter(deps));
+    this.app.use(
+      '/api',
+      createCommandsRouter({ ...deps, systemController: this.systemController }),
+    );
+    this.app.use('/api', createSettingsRouter(deps));
+  }
+
+  _setupErrorHandler(): void {
+    this.app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+      res.status(((err as unknown as Record<string, unknown>).status as number) || 500).json({
+        success: false,
+        error: err.message || 'Internal Server Error',
+      });
+    });
+  }
+
+  start(): void {
+    this.server = this.app.listen(
+      this.port,
+      ((config.dashboard as Record<string, unknown>)?.bindAddress as string) || '0.0.0.0',
+      () => {
+        this.telemetryStore.ingest({
+          type: 'log',
+          source: 'dashboard',
+          level: 'info',
+          message: `Dashboard running on http://${(config.dashboard as Record<string, unknown>)?.bindAddress || '0.0.0.0'}:${this.port}`,
+        });
+      },
+    );
+
+    this.wsServer = new DashboardWebSocket(
+      this.server,
+      this.telemetryStore,
+      (config.dashboard as Record<string, unknown>)?.token as string | undefined,
+    );
+    this.telemetryStore.ws = this.wsServer;
+
+    setInterval(() => this.collector.cleanupOld(), 3600_000);
+    setInterval(() => this.collector.snapshotSessions(), 900_000);
+
+    this._sysInfoInterval = setInterval(() => this._broadcastSysInfo(), 3000);
+  }
+
+  async _broadcastSysInfo(): Promise<void> {
+    try {
+      let cpu = 0;
+      try {
+        const stat1 = readFileSync('/proc/stat', 'utf-8');
+        const cpu1 = stat1.split('\n').find((l) => l.startsWith('cpu '));
+        if (cpu1) {
+          const p1 = cpu1.trim().split(/\s+/).slice(1).map(Number);
+          const tot1 = p1.reduce((a, b) => a + b, 0);
+          const idle1 = p1[3];
+
+          await new Promise((r) => setTimeout(r, 100));
+
+          const stat2 = readFileSync('/proc/stat', 'utf-8');
+          const cpu2 = stat2.split('\n').find((l) => l.startsWith('cpu '));
+          if (cpu2) {
+            const p2 = cpu2.trim().split(/\s+/).slice(1).map(Number);
+            const tot2 = p2.reduce((a, b) => a + b, 0);
+            const idle2 = p2[3];
+
+            const td = tot2 - tot1;
+            const id = idle2 - idle1;
+            cpu = td > 0 ? parseFloat((((td - id) / td) * 100).toFixed(1)) : 0;
+          }
+        }
+      } catch {
+        // /proc/stat parsing can fail on some systems
+      }
+
+      const totalMem = os.totalmem();
+      const freeMem = os.freemem();
+      const ramUsed = totalMem - freeMem;
+      const ramPct = parseFloat(((ramUsed / totalMem) * 100).toFixed(1));
+
+      const now = Date.now();
+      if (!this._lastDiskCheck || now - this._lastDiskCheck >= 60000) {
+        try {
+          const { stdout } = await execFileAsync('df', ['-BG', '/'], {
+            encoding: 'utf-8',
+            timeout: 2000,
+          });
+          const lines = stdout.trim().split('\n');
+          const parts = lines[lines.length - 1]?.split(/\s+/);
+          if (parts) {
+            this._lastDiskTotal = parseInt(parts[1]);
+            this._lastDiskUsed = parseInt(parts[2]);
+            this._lastDiskPct = parseFloat(parts[4] as string);
+            this._lastDiskCheck = now;
+          }
+        } catch {
+          // df command might timeout or fail
+        }
+      }
+
+      this.telemetryStore.ingest({
+        type: 'system.metrics',
+        level: 'debug' as const,
+        source: 'bridge',
+        message: 'System metrics snapshot',
+        data: {
+          cpu,
+          cpu_pct: cpu,
+          cpuCores: os.cpus().length,
+          uptime: os.uptime(),
+          ramUsed,
+          ramTotal: totalMem,
+          ramPct,
+          ram_pct: ramPct,
+          diskUsed: this._lastDiskUsed || 0,
+          diskTotal: this._lastDiskTotal || 0,
+          diskPct: this._lastDiskPct || 0,
+          disk_pct: this._lastDiskPct || 0,
+        },
+      });
+    } catch {
+      // system metrics collection can fail silently
+    }
+  }
+
+  stop(): void {
+    if (this.server) {
+      this.server.close();
+    }
+    if (this._sysInfoInterval) {
+      clearInterval(this._sysInfoInterval);
+    }
+  }
+
+  logCall(data: unknown): void {
+    this.collector.logCall(data as Record<string, unknown>);
+  }
+}

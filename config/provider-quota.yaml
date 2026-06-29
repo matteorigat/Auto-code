@@ -70,7 +70,7 @@ providers:
         upstream: openai/gpt-oss-120b:free
         rpm: 10
       - id: openai/tier-1-trivial-fb4
-        upstream: openrouter/free
+        upstream: qwen/qwen3-coder:free
         rpm: 10
 
   # ─── Kilo Free ───

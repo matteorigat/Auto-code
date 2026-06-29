@@ -1,7 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
 body {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Outfit', sans-serif;
     background-color: #09090b;
     color: #fafafa;
 }
@@ -58,20 +56,4 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* Timeline specific */
-.timeline-item::before {
-    content: '';
-    position: absolute;
-    left: -21px;
-    top: 6px;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: #3f3f46;
-    border: 2px solid #18181b;
-    z-index: 10;
-}
-.timeline-item.active::before {
-    background: #8b5cf6;
-    box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
-}
+

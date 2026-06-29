@@ -2,16 +2,18 @@
   "name": "opencode-bridge-telegram",
   "version": "3.0.0",
   "description": "Autonomous Agent Orchestrator with SOTA Architecture",
-  "main": "src/index.mjs",
+  "main": "src/index.ts",
   "type": "module",
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
-    "start": "node src/index.mjs",
-    "start:dashboard": "node src/dashboard/index.mjs",
+    "start": "tsx src/index.ts",
+    "start:dashboard": "tsx src/dashboard/index.ts",
+    "build:frontend": "tsc -p dashboard/js",
+    "build": "npm run build:frontend && tsc",
     "cleanup": "./bin/cleanup.sh",
-    "typecheck": "echo 'No TypeScript check needed'",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -19,15 +21,26 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.0.1",
+    "@types/ws": "^8.18.1",
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
+    "@typescript-eslint/parser": "^8.62.0",
     "@vitest/coverage-v8": "^3.2.6",
     "eslint": "^10.5.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",
+    "jiti": "^2.7.0",
     "prettier": "^3.8.4",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.0",
     "vitest": "^3.0.0"
   },
   "dependencies": {
     "@babel/parser": "^7.26.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@notionhq/client": "^5.22.0",
     "@xenova/transformers": "^2.17.2",
     "better-sqlite3": "^11.8.1",
@@ -35,6 +48,7 @@
     "express": "^4.21.2",
     "puppeteer": "^25.1.0",
     "ws": "^8.21.0",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
   }
 }

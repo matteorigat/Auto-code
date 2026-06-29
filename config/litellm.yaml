@@ -93,47 +93,54 @@ model_list:
       model: ollama/gemma4:12b
     model_info:
       provider: ollama
-  - model_name: openai/tier-4-planner
+  - model_name: gpt-4o
     litellm_params:
-      model: openai/big-pickle
-    model_info:
-      provider: openai
-  - model_name: openai/tier-4-planner-fb1
-    litellm_params:
-      model: openai/openrouter/free
-    model_info:
-      provider: opencode
-  - model_name: openai/tier-4-planner-fb2
-    litellm_params:
-      model: cerebras/gpt-oss-120b
+      model: openrouter/qwen/qwen3-coder:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       provider: openrouter
-  - model_name: openai/tier-3-builder
+  - model_name: gpt-4o-fb1
     litellm_params:
-      model: openai/big-pickle
+      model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
     model_info:
-      provider: openai
-  - model_name: openai/tier-3-builder-fb1
+      provider: openrouter
+  - model_name: gpt-4-turbo
     litellm_params:
-      model: openai/openrouter/free
+      model: openrouter/poolside/laguna-m.1:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
     model_info:
-      provider: opencode
-  - model_name: openai/tier-2-hunter
+      provider: openrouter
+  - model_name: gpt-4-turbo-fb1
     litellm_params:
-      model: openai/openrouter/free
+      model: openrouter/openai/gpt-oss-120b:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
     model_info:
-      provider: openai
-  - model_name: openai/tier-2-hunter-fb1
+      provider: openrouter
+  - model_name: gpt-3.5-turbo
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v4-flash:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      provider: openrouter
+  - model_name: gpt-3.5-turbo-fb1
     litellm_params:
       model: mistral/devstral-latest
     model_info:
       provider: mistral
-  - model_name: openai/tier-1-trivial
+  - model_name: gpt-4o-mini
     litellm_params:
-      model: openai/openrouter/free
+      model: openrouter/deepseek/deepseek-v4-flash:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
     model_info:
-      provider: openai
-  - model_name: openai/tier-1-trivial-fb1
+      provider: openrouter
+  - model_name: gpt-4o-mini-fb1
     litellm_params:
       model: mistral/devstral-latest
     model_info:
@@ -161,11 +168,79 @@ model_list:
       provider: openrouter
   - model_name: big-pickle
     litellm_params:
-      model: openai/openrouter/free
+      model: openai/big-pickle
       api_base: https://opencode.ai/zen/v1
       api_key: os.environ/OPENCODE_API_KEY
     model_info:
       provider: opencode
+  - model_name: openai/tier-4-planner-fb2
+    litellm_params:
+      model: openrouter/qwen/qwen3-coder:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      provider: openrouter
+  - model_name: openai/tier-3-builder-fb2
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      provider: openrouter
+  - model_name: openai/tier-4-planner
+    litellm_params:
+      model: openai/big-pickle
+    model_info:
+      provider: openai
+  - model_name: openai/tier-3-builder
+    litellm_params:
+      model: openai/big-pickle
+    model_info:
+      provider: openai
+  - model_name: openai/tier-2-hunter
+    litellm_params:
+      model: openai/big-pickle
+    model_info:
+      provider: openai
+  - model_name: openai/tier-1-trivial
+    litellm_params:
+      model: openai/big-pickle
+    model_info:
+      provider: openai
+  - model_name: openai/tier-2-hunter-fb1
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v4-flash:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      provider: openrouter
+  - model_name: openai/tier-1-trivial-fb1
+    litellm_params:
+      model: openrouter/qwen/qwen3-coder:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      provider: openrouter
+  - model_name: openai/tier-4-planner-fb3
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+    model_info:
+      provider: groq
+  - model_name: openai/tier-3-builder-fb3
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+    model_info:
+      provider: groq
+  - model_name: openai/tier-2-hunter-fb2
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+    model_info:
+      provider: groq
+  - model_name: openai/tier-1-trivial-fb2
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+    model_info:
+      provider: groq
 router_settings:
   routing_strategy: usage-based-routing-v2
   num_retries: 1
@@ -178,16 +253,33 @@ router_settings:
   redis_host: os.environ/REDIS_HOST
   redis_port: os.environ/REDIS_PORT
   fallbacks:
+    - gpt-3.5-turbo:
+        - gpt-3.5-turbo-fb1
+    - gpt-4o-mini:
+        - gpt-4o-mini-fb1
+    - gpt-4-turbo:
+        - gpt-4-turbo-fb1
+    - gpt-4o:
+        - gpt-4o-fb1
+    - openai/tier-4-planner:
+        - openai/tier-4-planner-fb2
+        - openai/tier-4-planner-fb3
+    - openai/tier-3-builder:
+        - openai/tier-3-builder-fb2
+        - openai/tier-3-builder-fb3
     - openai/tier-2-hunter:
         - openai/tier-2-hunter-fb1
+        - openai/tier-2-hunter-fb2
     - openai/tier-1-trivial:
         - openai/tier-1-trivial-fb1
+        - openai/tier-1-trivial-fb2
+  context_window_fallbacks:
+    - gpt-4o:
+        - gpt-4o-fb1
     - openai/tier-4-planner:
-        - openai/tier-4-planner-fb1
         - openai/tier-4-planner-fb2
     - openai/tier-3-builder:
-        - openai/tier-3-builder-fb1
-  context_window_fallbacks: []
+        - openai/tier-3-builder-fb2
   rate_limit_fails_allowed: 1
 litellm_settings:
   drop_params: true
@@ -201,6 +293,7 @@ litellm_settings:
   callbacks:
     - dashboard.litellm_logger.proxy_handler_instance
 general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
   background_health_checks: false
   health_check_interval: 30
   enable_health_check_routing: true

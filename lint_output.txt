@@ -1,0 +1,186 @@
+
+> opencode-bridge-telegram@3.0.0 lint
+> eslint .
+
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/agents/orchestrator/phases/discover.ts
+   88:14  warning  '_' is defined but never used  @typescript-eslint/no-unused-vars
+  107:18  warning  '_' is defined but never used  @typescript-eslint/no-unused-vars
+  178:14  warning  '_' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/agents/orchestrator/phases/idle.ts
+  1:10  warning  'basename' is defined but never used         @typescript-eslint/no-unused-vars
+  1:20  warning  'join' is defined but never used             @typescript-eslint/no-unused-vars
+  2:10  warning  'existsSync' is defined but never used       @typescript-eslint/no-unused-vars
+  2:22  warning  'mkdirSync' is defined but never used        @typescript-eslint/no-unused-vars
+  2:33  warning  'readFileSync' is defined but never used     @typescript-eslint/no-unused-vars
+  2:47  warning  'writeFileSync' is defined but never used    @typescript-eslint/no-unused-vars
+  3:10  warning  'execFileSync' is defined but never used     @typescript-eslint/no-unused-vars
+  8:18  warning  'notion' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/agents/orchestrator/phases/qa.ts
+  52:7  error  The value assigned to 'allPassed' is not used in subsequent statements  no-useless-assignment
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/agents/orchestrator/phases/sync.ts
+  4:25  warning  'projectPath' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/agents/orchestrator/phases/visual-qa.ts
+  105:9  error  The value assigned to 'allPassed' is not used in subsequent statements  no-useless-assignment
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/agents/runtime.ts
+    3:23  warning  'Story' is defined but never used      @typescript-eslint/no-unused-vars
+   48:11  warning  'EventData' is defined but never used  @typescript-eslint/no-unused-vars
+  239:14  warning  'e' is defined but never used          @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/agents/runtime/api.ts
+  77:12  warning  '_e' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/bin/search_codebase.ts
+  4:10  warning  'execSync' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/dashboard/js/api.ts
+  39:38  error  There is no `cause` attached to the symptom error being thrown  preserve-caught-error
+  59:38  error  There is no `cause` attached to the symptom error being thrown  preserve-caught-error
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/dashboard/js/app.ts
+   87:4   warning  'range' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  187:12  warning  '_' is defined but never used                                            @typescript-eslint/no-unused-vars
+  187:15  error    Empty block statement                                                    no-empty
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/dashboard/js/components/calls.ts
+  124:9  error  The value assigned to 'responseHTML' is not used in subsequent statements  no-useless-assignment
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/dashboard/js/components/cognitive.ts
+  1:24  warning  'sanitize' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/dashboard/js/components/commands.ts
+  51:14  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+  70:14  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/dashboard/js/components/header.ts
+  1:10  warning  'escapeHtml' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/dashboard/js/components/hitl.ts
+  126:16  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/dashboard/js/components/models/views/aliases.ts
+  151:11  error  The value assigned to 'primaryHtml' is not used in subsequent statements  no-useless-assignment
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/dashboard/js/components/models/views/discovery.ts
+  290:11  warning  'bgColor' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/dashboard/js/ws.ts
+   52:18  warning  '_' is defined but never used  @typescript-eslint/no-unused-vars
+   52:21  error    Empty block statement          no-empty
+   88:18  warning  '_' is defined but never used  @typescript-eslint/no-unused-vars
+   88:21  error    Empty block statement          no-empty
+  110:16  warning  '_' is defined but never used  @typescript-eslint/no-unused-vars
+  110:19  error    Empty block statement          no-empty
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/bot/message-handler.ts
+  30:3  warning  'sessionManager' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/bot/telegram-bot.ts
+  2:10  warning  'join' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/bot/wizard-fsm.ts
+  295:51  warning  'st' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/core/hybrid-search.ts
+  73:14  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/core/notion-adapter.ts
+   11:10  warning  'existsSync' is defined but never used                                            @typescript-eslint/no-unused-vars
+   11:22  warning  'readFileSync' is defined but never used                                          @typescript-eslint/no-unused-vars
+   11:36  warning  'writeFileSync' is defined but never used                                         @typescript-eslint/no-unused-vars
+   12:10  warning  'Client' is defined but never used                                                @typescript-eslint/no-unused-vars
+   14:10  warning  'join' is defined but never used                                                  @typescript-eslint/no-unused-vars
+  196:5   warning  'since' is assigned a value but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/core/quality-gate.ts
+   60:14  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+   67:16  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+  151:16  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/core/safety.ts
+  2:10  warning  'existsSync' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/core/semantic-cache.ts
+  44:14  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/core/task-manager.ts
+    2:16  warning  'basename' is defined but never used               @typescript-eslint/no-unused-vars
+  257:7   warning  'progress' is assigned a value but never used      @typescript-eslint/no-unused-vars
+  464:15  warning  '_projectSlug' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/dashboard/metrics-db.ts
+  12:10  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/dashboard/providers.ts
+   1:10  warning  'readFileSync' is defined but never used        @typescript-eslint/no-unused-vars
+   1:24  warning  'existsSync' is defined but never used          @typescript-eslint/no-unused-vars
+   2:10  warning  'join' is defined but never used                @typescript-eslint/no-unused-vars
+   4:10  warning  'homedir' is defined but never used             @typescript-eslint/no-unused-vars
+   6:7   warning  '__dirname' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  85:11  warning  'ProviderConfig' is defined but never used      @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/dashboard/routes/providers/discovery.ts
+  773:16  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/dashboard/routes/providers/health.ts
+  2:10  warning  'join' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/dashboard/routes/settings.ts
+  24:10  warning  'writeLitellmYaml' is defined but never used     @typescript-eslint/no-unused-vars
+  88:13  warning  'genericLog' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/dashboard/routes/static.ts
+  1:37  warning  'NextFunction' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/dashboard/routes/system.ts
+  16:54  warning  'config' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/index.ts
+    5:10  warning  'getDockerController' is defined but never used   @typescript-eslint/no-unused-vars
+  130:9   warning  'projectPath' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/mcp/code-search-server.ts
+  6:10  warning  'readFileSync' is defined but never used  @typescript-eslint/no-unused-vars
+  6:24  warning  'existsSync' is defined but never used    @typescript-eslint/no-unused-vars
+  7:10  warning  'join' is defined but never used          @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/src/services/docker-sandbox.ts
+  1:24  warning  'spawn' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/tests/integration/bridge.test.ts
+  1:32  warning  'vi' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/tests/setup.ts
+  1:10  warning  'vi' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/tests/unit/providers.test.ts
+   61:8   warning  'fs' is defined but never used                                             @typescript-eslint/no-unused-vars
+  136:11  warning  'mockConfig' is assigned a value but never used                            @typescript-eslint/no-unused-vars
+  215:63  warning  'path' is defined but never used. Allowed unused args must match /^_/u     @typescript-eslint/no-unused-vars
+  217:7   warning  'path' is defined but never used. Allowed unused args must match /^_/u     @typescript-eslint/no-unused-vars
+  218:7   warning  'options' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  252:50  warning  'path' is defined but never used. Allowed unused args must match /^_/u     @typescript-eslint/no-unused-vars
+  254:7   warning  'path' is defined but never used. Allowed unused args must match /^_/u     @typescript-eslint/no-unused-vars
+  255:7   warning  'options' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  261:7   warning  'options' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  324:50  warning  'path' is defined but never used. Allowed unused args must match /^_/u     @typescript-eslint/no-unused-vars
+  327:7   warning  'options' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  334:52  warning  'url' is defined but never used. Allowed unused args must match /^_/u      @typescript-eslint/no-unused-vars
+  388:50  warning  'path' is defined but never used. Allowed unused args must match /^_/u     @typescript-eslint/no-unused-vars
+  390:7   warning  'path' is defined but never used. Allowed unused args must match /^_/u     @typescript-eslint/no-unused-vars
+  391:7   warning  'options' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  428:50  warning  'path' is defined but never used. Allowed unused args must match /^_/u     @typescript-eslint/no-unused-vars
+  430:7   warning  'path' is defined but never used. Allowed unused args must match /^_/u     @typescript-eslint/no-unused-vars
+  431:7   warning  'options' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  437:7   warning  'options' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+/Users/matteorigat/Progetti/opencode-bridge-telegram/tests/unit/task-manager.test.ts
+  1:48  warning  'MockedObject' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 97 problems (10 errors, 87 warnings)
+

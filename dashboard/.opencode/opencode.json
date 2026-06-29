@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "permission": "allow",
-  "model": "openrouter/openrouter/free",
+  "model": "openrouter/qwen/qwen3-coder:free",
   "compaction": { "auto": true, "prune": true, "reserved": 30000 }
 }

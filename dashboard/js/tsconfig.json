@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "useDefineForClassFields": false,
+    "noEmit": false,
+    "outDir": "../dist/js",
+    "rootDir": "./"
+  },
+  "include": ["**/*.ts"]
+}

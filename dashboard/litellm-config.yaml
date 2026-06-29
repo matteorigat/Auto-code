@@ -475,7 +475,7 @@ model_list:
 
   - model_name: openai/tier-1-trivial-fb4
     litellm_params:
-      model: openrouter/openrouter/free
+      model: openrouter/qwen/qwen3-coder:free
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       rpm: 10
