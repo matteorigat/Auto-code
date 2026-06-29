@@ -14,6 +14,7 @@ import { createLogsRouter } from './routes/logs.js';
 import { createCommandsRouter, SystemController } from './routes/commands.js';
 import { createSettingsRouter } from './routes/settings.js';
 import { createStaticRouter } from './routes/static.js';
+import { createOmniRouteProxyRouter } from './routes/omniroute-proxy.js';
 import config from '../config/index.js';
 
 const execFileAsync = promisify(execFile);
@@ -57,119 +58,6 @@ export class DashboardServer {
       next();
     });
 
-    // Transparent proxy for OpenCode requests targeting LiteLLM,
-    // intercepting response payloads to override/mask model name prefixes.
-    this.app.all('/api/opencode/v1/*', async (req: Request, res: Response) => {
-      const subPath = req.params[0] || '';
-      const targetUrl = `http://127.0.0.1:4000/v1/${subPath}`;
-
-      const headers: Record<string, string> = {};
-      for (const [key, value] of Object.entries(req.headers)) {
-        if (key.toLowerCase() !== 'host' && typeof value === 'string') {
-          headers[key] = value;
-        }
-      }
-
-      try {
-        const isPost = req.method === 'POST';
-        const fetchOptions: RequestInit = {
-          method: req.method,
-          headers,
-        };
-        if (isPost && req.body) {
-          fetchOptions.body = JSON.stringify(req.body);
-        }
-
-        const response = await fetch(targetUrl, fetchOptions);
-
-        response.headers.forEach((value, key) => {
-          if (!['content-encoding', 'transfer-encoding', 'content-length'].includes(key.toLowerCase())) {
-            res.setHeader(key, value);
-          }
-        });
-        res.status(response.status);
-
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('text/event-stream')) {
-          if (!response.body) {
-            return res.end();
-          }
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          const encoder = new TextEncoder();
-
-          let pendingBuffer = '';
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            pendingBuffer += decoder.decode(value, { stream: true });
-            const lines = pendingBuffer.split('\n');
-            pendingBuffer = lines.pop() || '';
-
-            const modifiedLines = lines.map((line) => {
-              if (line.startsWith('data: ')) {
-                const dataStr = line.slice(6).trim();
-                if (dataStr && dataStr !== '[DONE]') {
-                  try {
-                    const dataObj = JSON.parse(dataStr);
-                    if (dataObj.model) {
-                      const reqModel = req.body?.model || 'gpt-4o';
-                      dataObj.model = reqModel;
-                    }
-                    return `data: ${JSON.stringify(dataObj)}`;
-                  } catch {
-                    return line;
-                  }
-                }
-              }
-              return line;
-            });
-
-            res.write(encoder.encode(modifiedLines.join('\n') + '\n'));
-          }
-
-          if (pendingBuffer) {
-            let line = pendingBuffer;
-            if (line.startsWith('data: ')) {
-              const dataStr = line.slice(6).trim();
-              if (dataStr && dataStr !== '[DONE]') {
-                try {
-                  const dataObj = JSON.parse(dataStr);
-                  if (dataObj.model) {
-                    const reqModel = req.body?.model || 'gpt-4o';
-                    dataObj.model = reqModel;
-                  }
-                  line = `data: ${JSON.stringify(dataObj)}`;
-                } catch {
-                  // ignore
-                }
-              }
-            }
-            res.write(encoder.encode(line));
-          }
-          return res.end();
-        } else {
-          const resText = await response.text();
-          try {
-            const dataObj = JSON.parse(resText);
-            if (dataObj.model) {
-              const reqModel = req.body?.model || 'gpt-4o';
-              dataObj.model = reqModel;
-            }
-            res.json(dataObj);
-          } catch {
-            res.send(resText);
-          }
-        }
-      } catch (err: unknown) {
-        console.error('[OpencodeProxy] Error proxying request:', (err as Error).message);
-        if (!res.headersSent) {
-          res.status(500).json({ error: (err as Error).message });
-        }
-      }
-    });
-
     this.app.use('/api', (req: Request, res: Response, next: NextFunction) => {
       if (req.path.startsWith('/internal/')) {
         const ip = req.ip || req.socket.remoteAddress;
@@ -200,6 +88,7 @@ export class DashboardServer {
       createCommandsRouter({ ...deps, systemController: this.systemController }),
     );
     this.app.use('/api', createSettingsRouter(deps));
+    this.app.use('/api/omniroute', createOmniRouteProxyRouter(deps));
   }
 
   _setupErrorHandler(): void {

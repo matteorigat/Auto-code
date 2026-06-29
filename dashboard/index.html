@@ -52,11 +52,14 @@
             <button id="tab-btn-quotas" class="nav-tab text-zinc-400 text-sm font-semibold pb-3 outline-none">
                 Provider Quotas & Audits
             </button>
+            <button id="tab-btn-usage-charts" class="nav-tab text-zinc-400 text-sm font-semibold pb-3 outline-none">
+                Usage Charts
+            </button>
+            <button id="tab-btn-provider-stats" class="nav-tab text-zinc-400 text-sm font-semibold pb-3 outline-none">
+                Provider Stats
+            </button>
             <button id="tab-btn-explorer" class="nav-tab text-zinc-400 text-sm font-semibold pb-3 outline-none">
                 API Calls Explorer
-            </button>
-            <button id="tab-btn-models" class="nav-tab text-zinc-400 text-sm font-semibold pb-3 outline-none">
-                Model Management
             </button>
         </div>
 
@@ -135,15 +138,21 @@
                 <div class="glass-panel p-6" id="provider-table-container"></div>
             </div>
 
+            <!-- 6. USAGE CHARTS TAB -->
+            <div id="tab-content-usage-charts" class="tab-content">
+                <div id="usage-charts-container" class="glass-panel p-6"></div>
+            </div>
+
+            <!-- 7. PROVIDER STATS TAB -->
+            <div id="tab-content-provider-stats" class="tab-content">
+                <div id="provider-stats-container" class="glass-panel p-6"></div>
+            </div>
+
             <!-- 5. API CALLS EXPLORER TAB -->
             <div id="tab-content-explorer" class="tab-content glass-panel p-6 min-h-[500px]">
                 <div id="calls-container" class="h-full"></div>
             </div>
 
-            <!-- 6. MODEL MANAGEMENT TAB -->
-            <div id="tab-content-models" class="tab-content">
-                <!-- Mounted dynamically -->
-            </div>
 
 
         </main>

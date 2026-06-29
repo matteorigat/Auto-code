@@ -166,7 +166,8 @@ export class TierSelector {
         /* ignore */
       }
     }
-    const apiKey = config.litellm.masterKey;
+    const apiKey = config.omniroute.apiKey;
+    const omnirouteUrl = config.omniroute.url;
     let provider = existing.provider as any;
     if (provider) {
       for (const prov of Object.values(provider) as any[]) {
@@ -176,14 +177,14 @@ export class TierSelector {
       }
       if (provider.openai) {
         if (!provider.openai.options) provider.openai.options = {};
-        provider.openai.options.baseURL = `http://127.0.0.1:${config.dashboard.port}/api/opencode/v1`;
+        provider.openai.options.baseURL = `${omnirouteUrl}/v1`;
       }
     } else {
       provider = {
         openai: {
           apiKey,
           options: {
-            baseURL: `http://127.0.0.1:${config.dashboard.port}/api/opencode/v1`,
+            baseURL: `${omnirouteUrl}/v1`,
             headerTimeout: 120000,
             timeout: 180000,
           },
@@ -191,14 +192,25 @@ export class TierSelector {
       };
     }
     
-    // Map custom tiers to standard OpenAI model names to bypass OpenCode 1.17 strict validation
+    // Map custom tiers to OmniRoute auto-routing model names
     const tierToModel: Record<string, string> = {
-      'tier-4-planner': 'gpt-4o',
-      'tier-3-builder': 'gpt-4-turbo',
-      'tier-2-hunter': 'gpt-3.5-turbo',
-      'tier-1-trivial': 'gpt-4o-mini',
+      'tier-4-planner': 'auto/best-reasoning',
+      'tier-3-builder': 'auto/best-coding',
+      'tier-2-hunter': 'auto/best-coding',
+      'tier-1-trivial': 'auto/fast',
     };
-    const mappedModel = tierToModel[tier] || 'gpt-4o';
+    const mappedModel = tierToModel[tier] || 'auto/best-coding';
+
+    const allModels = Object.values(tierToModel);
+    const prov = (provider ?? {}) as Record<string, any>;
+    if (!prov.openai) prov.openai = {};
+    prov.openai.models = {};
+    for (const m of allModels) {
+      prov.openai.models[m] = {
+        id: m,
+        limit: { context: 128000, output: 8192 },
+      };
+    }
 
     const opencodeConfig: Record<string, unknown> = {
       $schema: (existing.$schema as string) || 'https://opencode.ai/config.json',

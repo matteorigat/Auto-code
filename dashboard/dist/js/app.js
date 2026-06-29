@@ -6,6 +6,8 @@ import { mountLogs } from './components/logs.js';
 import { mountCommands } from './components/commands.js';
 import { mountStats } from './components/stats.js';
 import { mountProviders, mountQuotaGauges } from './components/providers.js';
+import { mountUsageCharts } from './components/usage-charts.js';
+import { mountProviderStats } from './components/provider-stats.js';
 import { mountSessions } from './components/sessions.js';
 import { mountCalls } from './components/calls.js';
 import { mountRouting } from './components/routing.js';
@@ -13,11 +15,10 @@ import { mountCognitive } from './components/cognitive.js';
 import { mountAuthOverlay } from './components/auth.js';
 import { mountHITL } from './components/hitl.js';
 import { mountTimeline } from './components/timeline.js';
-import { mountModels } from './components/models/index.js';
 import { BurnChart, ModelChart } from './charts.js';
 const api = new DashboardAPI();
 const state = new AppState();
-const tabKeys = ['overview', 'logs', 'hitl', 'quotas', 'explorer', 'models'];
+const tabKeys = ['overview', 'logs', 'hitl', 'quotas', 'usage-charts', 'provider-stats', 'explorer'];
 tabKeys.forEach((tab) => {
     const btn = document.getElementById(`tab-btn-${tab}`);
     const pane = document.getElementById(`tab-content-${tab}`);
@@ -55,6 +56,12 @@ state.subscribe((s) => {
         if (s.dailyData)
             burnChart.update(s.dailyData);
     }
+    if (s.activeTab === 'usage-charts' && s.omnirouteUsageAnalytics) {
+        // handled by mountUsageCharts subscriber
+    }
+    if (s.activeTab === 'provider-stats' && s.omnirouteProviderStats) {
+        // handled by mountProviderStats subscriber
+    }
 });
 function rangeToParams(range) {
     const now = new Date();
@@ -85,7 +92,8 @@ mountRouting(document.getElementById('routing-container'), state);
 mountCognitive(document.getElementById('cognitive-container'), state);
 mountHITL(document.getElementById('hitl-panel-container'), state, api);
 mountTimeline(document.getElementById('loop-state-details'), state);
-mountModels(document.getElementById('tab-content-models'), state, api);
+mountUsageCharts(document.getElementById('usage-charts-container'), state);
+mountProviderStats(document.getElementById('provider-stats-container'), state);
 const burnChartCanvas = document.createElement('canvas');
 burnChartCanvas.classList.add('w-full', 'h-full');
 const burnChartWrapper = document.getElementById('burn-chart-container');
@@ -103,7 +111,7 @@ async function fetchSnapshot() {
         try {
             const rp = rangeToParams(state.timeRange);
             const rangeQuery = `?from=${encodeURIComponent(rp.from)}&to=${encodeURIComponent(rp.to)}`;
-            const [summaryRes, bridgeRes, sessionsRes, sysRes, quotaRes, routingRes, sotaRes, dailyRes, logsRes, callsRes,] = await Promise.all([
+            const [summaryRes, bridgeRes, sessionsRes, sysRes, quotaRes, routingRes, sotaRes, dailyRes, logsRes, callsRes, providersMatrixRes, usageAnalyticsRes, providerStatsRes,] = await Promise.all([
                 api.get(`/summary${rangeQuery}`).catch(() => null),
                 api.get('/bridge-state').catch(() => null),
                 api.get(`/sessions${rangeQuery}`).catch(() => null),
@@ -114,6 +122,9 @@ async function fetchSnapshot() {
                 api.get(`/daily${rangeQuery}`).catch(() => null),
                 api.get('/logs?limit=500&type=log').catch(() => null),
                 api.get(`/calls${rangeQuery}`).catch(() => null),
+                api.get('/providers-matrix').catch(() => null),
+                api.get('/omniroute/usage/analytics').catch(() => null),
+                api.get('/omniroute/provider-stats').catch(() => null),
             ]);
             if (summaryRes) {
                 state.summary = summaryRes;
@@ -132,8 +143,18 @@ async function fetchSnapshot() {
             if (sotaRes)
                 state.sotaStats = sotaRes;
             if (dailyRes) {
-                state.dailyData = dailyRes;
-                burnChart.update(dailyRes);
+                const dailyData = Array.isArray(dailyRes) ? dailyRes : (dailyRes.local || []);
+                state.dailyData = dailyData;
+                burnChart.update(dailyData);
+            }
+            if (providersMatrixRes && !providersMatrixRes.error) {
+                state.providerHealthMatrix = providersMatrixRes;
+            }
+            if (usageAnalyticsRes && !usageAnalyticsRes.error) {
+                state.omnirouteUsageAnalytics = usageAnalyticsRes;
+            }
+            if (providerStatsRes && !providerStatsRes.error) {
+                state.omnirouteProviderStats = providerStatsRes;
             }
             if (logsRes && logsRes.events) {
                 state.bulkAddEvents(logsRes.events);
@@ -179,17 +200,6 @@ const ws = new DashboardWebSocket({
     },
     onEvent: (ev) => {
         state.addEvent(ev);
-        if (ev.type === 'loop.status' || ev.type === 'phase.transition') {
-            api
-                .get('/routing-chain')
-                .then((res) => {
-                if (res) {
-                    state.routingChain = res;
-                    state.notify();
-                }
-            })
-                .catch(() => null);
-        }
     },
     onStatusChange: (status) => {
         header.setConnectionStatus(status);

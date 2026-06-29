@@ -300,14 +300,17 @@ export function mountHeader(container, state, api, onRefresh, onRangeChange) {
     const isLoopRunning =
       processes?.loop?.running || (processes?.loop?.phase && processes.loop.phase !== 'IDLE');
     const isOpencodeRunning = processes?.opencode?.running;
-    const isLitellmRunning = processes?.litellm?.running;
-    const isBridgeOnline = isOpencodeRunning || isLitellmRunning || isLoopRunning;
+    const isOmniRouteRunning = processes?.omniroute?.running;
+    const isBridgeOnline = isOpencodeRunning || isOmniRouteRunning || isLoopRunning;
+    const hasOrHealth = !!(state.summary?.omniroute);
 
     if (isBridgeOnline) {
       bridgeIndicator.className =
         'flex items-center gap-2 px-3 py-1.5 rounded-full bg-accentBlue/10 border border-accentBlue/20 text-accentBlue transition-all duration-300';
       bridgeDot.className = 'w-2 h-2 rounded-full bg-accentBlue pulse-dot';
-      bridgeText.textContent = `Bridge On`;
+      const orUptime = state.summary?.omniroute?.uptime;
+      const uptimeStr = orUptime ? `${Math.floor(orUptime)}s` : '';
+      bridgeText.textContent = `Bridge On${uptimeStr ? ` · OR ${uptimeStr}` : ''}`;
     } else {
       bridgeIndicator.className =
         'flex items-center gap-2 px-3 py-1.5 rounded-full bg-danger/10 border border-danger/20 text-danger transition-all duration-300';

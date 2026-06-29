@@ -1,4 +1,4 @@
-import { spawn, execSync, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -25,16 +25,16 @@ export class ProcessManager {
   readonly DASHBOARD_PORT: number;
   readonly HEALTH_PORT: number;
 
-  litellmProc: ChildProcess | null = null;
+  omnirouteProc: ChildProcess | null = null;
   opencodeProc: ChildProcess | null = null;
   dashboardProc: ChildProcess | null = null;
   healthOk: boolean = false;
   opencodeRestartDelay: number = 3000;
-  litellmRestartDelay: number = 3000;
+  omnirouteRestartDelay: number = 3000;
   readonly startupTime: number = Date.now();
   isShuttingDown: boolean = false;
   manualStopOpencode: boolean = false;
-  manualStopLiteLLM: boolean = false;
+  manualStopOmniRoute: boolean = false;
 
   constructor(bridgePath: string) {
     this.bridgePath = bridgePath;
@@ -42,102 +42,80 @@ export class ProcessManager {
     this.HEALTH_PORT = config.health.port;
   }
 
-  startLiteLLM(): void {
-    this.manualStopLiteLLM = false;
-    if (this.litellmProc) return;
-    const configPath = join(this.bridgePath, 'config', 'litellm.yaml');
-    if (!existsSync(configPath)) {
-      console.warn('config/litellm.yaml not found, skipping LiteLLM');
+  startOmniRoute(): void {
+    this.manualStopOmniRoute = false;
+    if (this.omnirouteProc) return;
+    const port = config.omniroute.port;
+
+    const nvmDir = join(homedir(), '.nvm', 'versions', 'node');
+    const node22Dir = join(nvmDir, 'v22.22.3');
+    const node22Bin = join(node22Dir, 'bin', 'node');
+    const omnirouteEntry = join(node22Dir, 'lib', 'node_modules', 'omniroute', 'bin', 'omniroute.mjs');
+
+    if (!existsSync(omnirouteEntry)) {
+      console.warn(
+        'omniroute not found in nvm node22 global modules, skipping. Install with: nvm use 22 && npm install -g omniroute',
+      );
       return;
     }
 
-    const dockerComposePath = join(this.bridgePath, 'deploy', 'docker-compose.litellm.yml');
-    if (existsSync(dockerComposePath)) {
-      this.litellmProc = spawn('docker', ['compose', '-f', dockerComposePath, 'up', '--build'], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          LITELLM_MASTER_KEY: config.litellm.masterKey,
-        },
-      });
-    } else {
-      let litellmBin: string;
-      try {
-        litellmBin = execSync('which litellm', { encoding: 'utf8' }).trim();
-      } catch {
-        litellmBin = join(homedir(), '.local', 'bin', 'litellm');
-      }
+    const cleanEnv: Record<string, string> = {
+      PATH: `${join(node22Dir, 'bin')}:${process.env.PATH || ''}`,
+      NVM_BIN: join(node22Dir, 'bin'),
+      NVM_DIR: join(homedir(), '.nvm'),
+      HOME: homedir(),
+      USER: process.env.USER || '',
+      PORT: String(config.omniroute.port),
+      JWT_SECRET: process.env.JWT_SECRET || '***REMOVED***',
+      OMNIROUTE_API_KEY:
+        process.env.API_KEY_SECRET || process.env.OMNIROUTE_API_KEY || '***REMOVED***',
+      API_KEY_SECRET:
+        process.env.API_KEY_SECRET || process.env.OMNIROUTE_API_KEY || '***REMOVED***',
+      INITIAL_PASSWORD: process.env.INITIAL_PASSWORD || '***REMOVED***',
+      DATA_DIR: process.env.OMNIROUTE_DATA_DIR || join(homedir(), '.omniroute'),
+    };
 
-      if (!litellmBin || !existsSync(litellmBin)) {
-        console.warn('litellm not found, skipping');
-        return;
-      }
-      this.litellmProc = spawn(
-        litellmBin,
-        ['--config', configPath, '--port', '4000', '--num_workers', '1'],
-        {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          env: {
-            ...process.env,
-            PYTHONPATH: this.bridgePath,
-            LITELLM_MASTER_KEY: config.litellm.masterKey,
-            OPENROUTER_API_KEY: config.litellm.providerKeys.openrouter,
-            NVIDIA_API_KEY: config.litellm.providerKeys.nvidia,
-            GROQ_API_KEY: config.litellm.providerKeys.groq,
-            MISTRAL_API_KEY: config.litellm.providerKeys.mistral,
-            CEREBRAS_API_KEY: config.litellm.providerKeys.cerebras,
-            XAI_API_KEY: config.litellm.providerKeys.xai,
-            GEMINI_API_KEY: config.litellm.providerKeys.gemini,
-            KILOCODE_API_KEY: config.litellm.providerKeys.kilocode,
-          },
-        },
-      );
-    }
+    this.omnirouteProc = spawn(node22Bin, [omnirouteEntry], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: cleanEnv,
+    });
 
-    this.litellmProc.on('error', (err: Error) =>
-      console.error('[litellm] spawn error:', err.message),
+    this.omnirouteProc.on('error', (err: Error) =>
+      console.error('[omniroute] spawn error:', err.message),
     );
-    this.litellmProc.stdout?.on('data', (d: Buffer) =>
-      pipeOutput(process.stdout, 'litellm', d.toString()),
+    this.omnirouteProc.stdout?.on('data', (d: Buffer) =>
+      pipeOutput(process.stdout, 'omniroute', d.toString()),
     );
-    this.litellmProc.stderr?.on('data', (d: Buffer) =>
-      pipeOutput(process.stderr, 'litellm-err', d.toString()),
+    this.omnirouteProc.stderr?.on('data', (d: Buffer) =>
+      pipeOutput(process.stderr, 'omniroute-err', d.toString()),
     );
-    this.litellmProc.on('exit', async (code: number | null) => {
-      bus.telemetry('process.status', 'bridge', `LiteLLM exited (code ${code})`, {
+    this.omnirouteProc.on('exit', async (code: number | null) => {
+      bus.telemetry('process.status', 'bridge', `OmniRoute exited (code ${code})`, {
         level: 'warn',
-        data: { name: 'litellm', status: 'stopped', code },
+        data: { name: 'omniroute', status: 'stopped', code },
       });
-      this.litellmProc = null;
+      this.omnirouteProc = null;
 
-      if (this.isShuttingDown || this.manualStopLiteLLM) return;
+      if (this.isShuttingDown || this.manualStopOmniRoute) return;
 
-      this.litellmRestartDelay = Math.min(this.litellmRestartDelay * 2, 60000);
-      await new Promise((resolve) => setTimeout(resolve, this.litellmRestartDelay));
-      if (this.isShuttingDown || this.manualStopLiteLLM) return;
-      this.startLiteLLM();
-      const ok = await this.waitForLiteLLM(10);
-      if (ok) this.litellmRestartDelay = 3000;
+      this.omnirouteRestartDelay = Math.min(this.omnirouteRestartDelay * 2, 60000);
+      await new Promise((resolve) => setTimeout(resolve, this.omnirouteRestartDelay));
+      if (this.isShuttingDown || this.manualStopOmniRoute) return;
+      this.startOmniRoute();
+      const ok = await this.waitForOmniRoute(15);
+      if (ok) this.omnirouteRestartDelay = 3000;
     });
   }
 
-  stopLiteLLM(): void {
-    this.manualStopLiteLLM = true;
-    if (this.litellmProc) {
+  stopOmniRoute(): void {
+    this.manualStopOmniRoute = true;
+    if (this.omnirouteProc) {
       try {
-        this.litellmProc.kill('SIGTERM');
+        this.omnirouteProc.kill('SIGTERM');
       } catch {
         // Best-effort
       }
-      this.litellmProc = null;
-    }
-    const dockerComposePath = join(this.bridgePath, 'deploy', 'docker-compose.litellm.yml');
-    if (existsSync(dockerComposePath)) {
-      try {
-        spawn('docker', ['compose', '-f', dockerComposePath, 'down']);
-      } catch {
-        console.error('[ProcessManager] Failed to run docker-compose down');
-      }
+      this.omnirouteProc = null;
     }
   }
 
@@ -198,10 +176,13 @@ export class ProcessManager {
     return false;
   }
 
-  async waitForLiteLLM(retries: number = 10): Promise<boolean> {
+  async waitForOmniRoute(retries: number = 15): Promise<boolean> {
     for (let i = 0; i < retries; i++) {
       try {
-        const r = await fetch('http://127.0.0.1:4000/health');
+        const r = await fetch(
+          `http://127.0.0.1:${config.omniroute.port}/v1/models`,
+          { headers: { Authorization: `Bearer ${config.omniroute.apiKey}` } },
+        );
         if (r.ok) return true;
       } catch {
         // Not ready yet
@@ -309,7 +290,7 @@ export class ProcessManager {
   stopAll(): void {
     this.isShuttingDown = true;
     this.stopDashboard();
-    this.stopLiteLLM();
+    this.stopOmniRoute();
     if (this.opencodeProc) {
       try {
         this.opencodeProc.kill('SIGTERM');

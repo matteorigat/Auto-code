@@ -45,15 +45,30 @@ export function createSystemRouter({ telemetryStore, config }: SystemDeps) {
     res.json(getProjectList());
   });
 
-  router.get('/health', (req: Request, res: Response) => {
+  router.get('/health', async (req: Request, res: Response) => {
     const ws = telemetryStore.ws;
     const count = ws ? ws.getClientCount() : 0;
     const row = telemetryStore.collector.get('SELECT COUNT(*) as count FROM events');
+
+    let orHealth: Record<string, unknown> | null = null;
+    const apiKey = process.env.OMNIROUTE_API_KEY || process.env.API_KEY_SECRET || '';
+    if (apiKey) {
+      try {
+        const r = await fetch('http://127.0.0.1:20128/api/monitoring/health', {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (r.ok) orHealth = (await r.json()) as Record<string, unknown>;
+      } catch {
+        // OmniRoute might not be running
+      }
+    }
+
     res.json({
       status: 'ok',
       ts: new Date().toISOString(),
       wsClients: count,
       eventsStored: (row?.count as number) || 0,
+      omniroute: orHealth ? { status: (orHealth as any).status, version: (orHealth as any).system?.version, uptime: (orHealth as any).system?.uptime } : null,
     });
   });
 

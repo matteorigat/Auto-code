@@ -13,6 +13,7 @@ import { createLogsRouter } from './routes/logs.js';
 import { createCommandsRouter } from './routes/commands.js';
 import { createSettingsRouter } from './routes/settings.js';
 import { createStaticRouter } from './routes/static.js';
+import { createOmniRouteProxyRouter } from './routes/omniroute-proxy.js';
 import config from '../config/index.js';
 const execFileAsync = promisify(execFile);
 export class DashboardServer {
@@ -75,6 +76,7 @@ export class DashboardServer {
         this.app.use('/api', createLogsRouter(deps));
         this.app.use('/api', createCommandsRouter({ ...deps, systemController: this.systemController }));
         this.app.use('/api', createSettingsRouter(deps));
+        this.app.use('/api/omniroute', createOmniRouteProxyRouter(deps));
     }
     _setupErrorHandler() {
         this.app.use((err, req, res, _next) => {

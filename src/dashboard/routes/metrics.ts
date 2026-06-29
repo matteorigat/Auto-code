@@ -9,6 +9,24 @@ interface RouterDeps {
   config: AppConfig;
 }
 
+const OR_API_KEY = () => process.env.OMNIROUTE_API_KEY || process.env.API_KEY_SECRET || '';
+
+async function fetchOmniRoute<T>(path: string, params?: Record<string, string>): Promise<T | null> {
+  const apiKey = OR_API_KEY();
+  if (!apiKey) return null;
+  try {
+    const query = params ? '?' + new URLSearchParams(params).toString() : '';
+    const res = await fetch(`http://127.0.0.1:20128${path}${query}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 export function createMetricsRouter({ collector, config }: RouterDeps) {
   const router = Router();
   const DASHBOARD_DIR = join(process.cwd(), 'dashboard');
@@ -55,7 +73,7 @@ export function createMetricsRouter({ collector, config }: RouterDeps) {
     return { conds, vals };
   }
 
-  router.get('/summary', (req: Request, res: Response, next: NextFunction) => {
+  router.get('/summary', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const df = dateFilter(req.query as Record<string, string | undefined>);
       const daily = collector.query(
@@ -76,6 +94,9 @@ export function createMetricsRouter({ collector, config }: RouterDeps) {
         df.vals,
       ) as Record<string, unknown> | undefined;
 
+      const telemetry = await fetchOmniRoute<Record<string, unknown>>('/api/telemetry/summary', { windowMs: '86400000' });
+      const analytics = await fetchOmniRoute<Record<string, unknown>>('/api/usage/analytics', { windowMs: '86400000' });
+
       res.json({
         totalCalls: (overall?.total_calls as number) || 0,
         totalCost: (overall?.total_cost as number) || 0,
@@ -85,20 +106,47 @@ export function createMetricsRouter({ collector, config }: RouterDeps) {
         todayCost: (today?.total_cost as number) || 0,
         totalErrors: (errors?.total_errors as number) || 0,
         byModel: daily || [],
+        omniroute: telemetry
+          ? {
+              avgLatencyMs: telemetry.avgLatencyMs,
+              errorRate: telemetry.errorRate,
+              uptime: telemetry.uptime,
+              memoryUsage: telemetry.memoryUsage,
+              activeConnections: telemetry.activeConnections,
+              sessions: telemetry.sessions,
+              latency: {
+                p50: telemetry.p50,
+                p95: telemetry.p95,
+                p99: telemetry.p99,
+                avg: telemetry.avg,
+              },
+              phaseBreakdown: telemetry.phaseBreakdown,
+            }
+          : null,
       });
     } catch (e) {
       next(e);
     }
   });
 
-  router.get('/daily', (req: Request, res: Response, next: NextFunction) => {
+  router.get('/daily', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const df = dateFilter(req.query as Record<string, string | undefined>);
       const data = collector.query(
         `SELECT date, provider, model, calls, input_tokens, output_tokens, total_tokens, cost, errors FROM daily_agg ${df.clause} ORDER BY date DESC, calls DESC LIMIT 500`,
         df.vals,
-      );
-      res.json(data);
+      ) as Record<string, unknown>[];
+
+      let orDaily: Record<string, unknown>[] | null = null;
+      const orHistory = await fetchOmniRoute<Record<string, unknown>[]>('/api/usage/history');
+      if (orHistory && Array.isArray(orHistory)) {
+        orDaily = orHistory;
+      }
+
+      res.json({
+        local: data,
+        omniroute: orDaily,
+      });
     } catch (e) {
       next(e);
     }

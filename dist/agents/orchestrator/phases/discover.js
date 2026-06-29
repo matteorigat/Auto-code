@@ -286,7 +286,44 @@ export async function handleDiscover(context) {
             }
         }
         else {
-            log(`[DISCOVER] Project ${name} has pending tasks, skipping discovery to let IDLE process them.`);
+            let pendingCount = 0;
+            let hasAnyReady = false;
+            try {
+                const projPrd = localTasks.readPRD();
+                const sarr = (projPrd.stories || []);
+                pendingCount = sarr.filter((s) => !s.passes && s.status !== 'completed').length;
+                hasAnyReady = sarr.some((s) => {
+                    if (s.passes || s.status === 'blocked')
+                        return false;
+                    const deps = s._deps ||
+                        s.dependencies ||
+                        s.dependsOn ||
+                        [];
+                    if (deps.length === 0)
+                        return true;
+                    return deps.every((depId) => {
+                        const dep = sarr.find((d) => String(d.id) === String(depId));
+                        return dep ? dep.passes : true;
+                    });
+                });
+            }
+            catch {
+                // Ignored
+            }
+            if (pendingCount > 0 && !hasAnyReady) {
+                log(`[DISCOVER] Project ${name} has ${pendingCount} pending/blocked tasks but none ready. Running orchestrator to unblock...`);
+                tierSelector.applyTierConfig(tier, dir);
+                const unblocker = new AgentRuntime({
+                    projectPath: dir,
+                    agentType: 'orchestrator',
+                    safety,
+                    stream,
+                });
+                await unblocker.run(180000);
+            }
+            else {
+                log(`[DISCOVER] Project ${name} has pending tasks, skipping discovery to let IDLE process them.`);
+            }
         }
     }
     await tasks.loadTasks();

@@ -296,11 +296,11 @@ export function mountCommands(container, state, api) {
     function renderProcesses() {
         const procs = [
             {
-                id: 'litellm',
-                name: 'LiteLLM Proxy',
-                desc: 'Model routing',
-                port: '4000',
-                data: state.bridgeState?.litellm || {},
+                id: 'omniroute',
+                name: 'OmniRoute Gateway',
+                desc: 'AI router & proxy',
+                port: '20128',
+                data: state.bridgeState?.omniroute || {},
             },
             {
                 id: 'opencode',
@@ -445,7 +445,7 @@ export function mountCommands(container, state, api) {
         executeCommand('start', els.cmdStart, projectKey ? { projectKey } : {});
     });
     async function execBulk(action) {
-        const procs = ['litellm', 'opencode'];
+        const procs = ['omniroute', 'opencode'];
         const results = await Promise.allSettled(procs.map(name => {
             const pData = state.bridgeState?.[name] || {};
             const running = !!(pData.running || pData.status === 'running');

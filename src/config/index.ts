@@ -61,8 +61,10 @@ export interface AppConfig {
     model: string;
     mode: string;
   };
-  litellm: {
-    masterKey: string;
+  omniroute: {
+    port: number;
+    url: string;
+    apiKey: string;
     providerKeys: Record<string, string>;
   };
   loop: {
@@ -117,8 +119,10 @@ const config: AppConfig = {
     model: process.env.OPENCODE_DEFAULT_MODEL || 'openai/tier-4-planner',
     mode: process.env.BRIDGE_MODE || 'api',
   },
-  litellm: {
-    masterKey: process.env.LITELLM_MASTER_KEY || 'sk-1234',
+  omniroute: {
+    port: parseNum(process.env.OMNIROUTE_PORT, 20128),
+    url: process.env.OMNIROUTE_URL || `http://127.0.0.1:${parseNum(process.env.OMNIROUTE_PORT, 20128)}`,
+    apiKey: process.env.OMNIROUTE_API_KEY || process.env.API_KEY_SECRET || '***REMOVED***',
     providerKeys: {
       openrouter: process.env.OPENROUTER_API_KEY || '',
       nvidia: process.env.NVIDIA_API_KEY || '',

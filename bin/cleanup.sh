@@ -60,18 +60,18 @@ for port in "${PORTS[@]}"; do
     fi
 done
 
-# Check if there are other orphaned opencode or litellm processes running
-echo -e "\n=== Checking for other orphaned opencode/litellm processes ==="
-# Find litellm or opencode processes
-orphans=$(ps aux | grep -E "opencode serve|litellm" | grep -v grep | awk '{print $2}' || true)
+# Check if there are other orphaned opencode or omniroute processes running
+echo -e "\n=== Checking for other orphaned opencode/omniroute processes ==="
+# Find omniroute or opencode processes
+orphans=$(ps aux | grep -E "opencode serve|omniroute" | grep -v grep | awk '{print $2}' || true)
 if [ -n "$orphans" ]; then
-    echo "Found other opencode/litellm processes with PID(s): $orphans"
+    echo "Found other opencode/omniroute processes with PID(s): $orphans"
     ps -p $orphans -o pid,comm,args || true
     echo "Terminating them..."
     kill -9 $orphans 2>/dev/null || true
 else
-    echo "No other orphaned opencode/litellm processes found."
+    echo "No other orphaned opencode/omniroute processes found."
 fi
 
 echo -e "\n=== Port Status after cleanup ==="
-lsof -n -P -i :8081 -i :4000 -i :9090 -i :4096 || echo "All targeted ports are free!"
+lsof -n -P -i :8081 -i :20128 -i :9090 -i :4096 || echo "All targeted ports are free!"

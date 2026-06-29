@@ -1,13 +1,13 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "permission": "allow",
-  "model": "openai/tier-4-planner",
+  "model": "openai/auto/best-coding",
   "compaction": { "auto": true, "prune": true, "reserved": 30000 },
   "provider": {
     "openai": {
-      "apiKey": "sk-1234",
+      "apiKey": "***REMOVED***",
       "options": {
-        "baseURL": "http://127.0.0.1:4000/v1",
+        "baseURL": "http://127.0.0.1:20128/v1",
         "headerTimeout": 120000,
         "timeout": 180000
       }
@@ -23,19 +23,19 @@
   },
   "agent": {
     "tier-4": {
-      "model": "openai/tier-4-planner",
+      "model": "openai/auto/best-reasoning",
       "fallbacks": ["ollama/gemma4:12b"]
     },
     "tier-3": {
-      "model": "openai/tier-3-builder",
+      "model": "openai/auto/best-coding",
       "fallbacks": ["ollama/gemma4:12b"]
     },
     "tier-2": {
-      "model": "openai/tier-2-hunter",
+      "model": "openai/auto/best-coding",
       "fallbacks": ["ollama/gemma4:12b"]
     },
     "tier-1": {
-      "model": "openai/tier-1-trivial",
+      "model": "openai/auto/fast",
       "fallbacks": ["ollama/gemma4:12b"]
     }
   }

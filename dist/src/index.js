@@ -56,7 +56,7 @@ opencodeClient.eventBus.on('event', (evt) => {
 // Periodically send health status to dashboard
 const HEALTH_PING_INTERVAL = setInterval(() => {
     telemetry.healthPing({
-        litellm: processManager.litellmProc ? { running: true } : { running: false },
+        omniroute: processManager.omnirouteProc ? { running: true } : { running: false },
         opencode: processManager.healthOk
             ? { running: true }
             : { running: false, restartDelay: processManager.opencodeRestartDelay },
@@ -88,7 +88,7 @@ const handleMessage = createMessageHandler(bot, loopManager, opencodeClient, wiz
 const handleCallback = createCallbackHandler(bot, loopManager);
 const pollingManager = new PollingManager(bot, handleMessage, handleCallback);
 console.log('Starting modular bridge...');
-processManager.startLiteLLM();
+processManager.startOmniRoute();
 processManager.startOpencode();
 processManager.startHealthServer(() => !!loopManager.childProc);
 const dashboardServer = new DashboardServer(config.dashboard?.port || 8081, {

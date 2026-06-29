@@ -15,8 +15,8 @@ export interface SystemController {
     currentProjectPath: string | null;
   };
   processManager?: {
-    startLiteLLM: () => void;
-    stopLiteLLM: () => void;
+    startOmniRoute: () => void;
+    stopOmniRoute: () => void;
     startOpencode: () => void;
     stopOpencode: () => void;
   };
@@ -154,14 +154,14 @@ export function createCommandsRouter({ systemController, telemetryStore, config 
 
       const pm = systemController.processManager;
 
-      if (processName === 'litellm') {
+      if (processName === 'omniroute') {
         if (action === 'start') {
-          pm.startLiteLLM();
+          pm.startOmniRoute();
         } else if (action === 'stop') {
-          pm.stopLiteLLM();
+          pm.stopOmniRoute();
         } else if (action === 'restart') {
-          pm.stopLiteLLM();
-          setTimeout(() => pm.startLiteLLM(), 1000);
+          pm.stopOmniRoute();
+          setTimeout(() => pm.startOmniRoute(), 1000);
         } else {
           return res.status(400).json({ error: `Unknown action: ${action}` });
         }

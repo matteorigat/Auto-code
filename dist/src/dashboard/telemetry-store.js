@@ -16,7 +16,7 @@ export class TelemetryStore {
             currentTask: null,
             activeAgent: null,
             processes: {
-                litellm: { running: false, pid: null },
+                omniroute: { running: false, pid: null },
                 opencode: { running: false, pid: null },
                 loop: { running: false, pid: null },
             },

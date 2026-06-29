@@ -3,7 +3,7 @@ import { escapeHtml } from '../utils/sanitize.js';
 import { formatDate } from '../utils/format.js';
 const SOURCE_COLORS = {
     opencode: 'text-sky-400',
-    litellm: 'text-emerald-400',
+    omniroute: 'text-emerald-400',
     telegram: 'text-violet-400',
     dashboard: 'text-amber-400',
     orchestrator: 'text-rose-400',
@@ -37,7 +37,7 @@ export function mountLogs(container, state, api = null) {
           <option value="all">All Sources</option>
           <option value="orchestrator">Orchestrator</option>
           <option value="agent">Agent Runtime</option>
-          <option value="litellm">LiteLLM Proxy</option>
+          <option value="omniroute">OmniRoute Gateway</option>
           <option value="opencode">OpenCode Serve</option>
           <option value="telegram">Telegram Bot</option>
           <option value="dashboard">Dashboard</option>
