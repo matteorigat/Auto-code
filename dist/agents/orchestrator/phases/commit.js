@@ -5,7 +5,7 @@ export async function handleCommit(context) {
     const tasksArray = tasks._tasks;
     const task = tasksArray?.find((t) => String(t.id) === String(taskId));
     const ws = task?.workspacePath || projectPath;
-    updateStatus({ phase: 'COMMIT', taskTitle: state.get()?.currentStory, taskId });
+    updateStatus({ phase: 'COMMIT', taskTitle: `[${taskId}] Preparing commit...`, taskId });
     log(`[COMMIT] git commit on branch in ${ws}`);
     try {
         execFileSync('git', ['rev-parse', '--git-dir'], { cwd: ws, timeout: 5000 });
@@ -19,6 +19,7 @@ export async function handleCommit(context) {
         execFileSync('git', ['config', 'user.name', 'Hydra Loop'], { cwd: ws, timeout: 5000 });
     }
     try {
+        updateStatus({ phase: 'COMMIT', taskTitle: `[${taskId}] Committing code changes: "${state.get()?.currentStory}"...`, taskId });
         execFileSync('git', ['add', '-A'], { cwd: ws, timeout: 15000 });
         execFileSync('git', ['commit', '-m', `feat(${taskId}): ${state.get()?.currentStory}`], {
             cwd: ws,
@@ -29,6 +30,7 @@ export async function handleCommit(context) {
     catch (e) {
         log(`[COMMIT] Error — git commit on branch failed: ${e.message}`);
     }
+    updateStatus({ phase: 'COMMIT', taskTitle: `[${taskId}] Merging task branch into base branch...`, taskId });
     log(`[COMMIT] merging task branch back to base branch`);
     const merged = taskId ? safety.mergeTaskBranch(taskId, ws) : false;
     if (merged) {

@@ -12,6 +12,7 @@ const PHASE_TIER_MAP: Record<string, string> = {
   PLAN: 'tier-4-planner',
   DISCOVER: 'tier-4-planner',
   EXEC: 'tier-3-builder',
+  CODE: 'tier-3-builder',
   SWARM: 'tier-3-builder',
   FIX: 'tier-2-hunter',
   QA: 'tier-2-hunter',
@@ -166,56 +167,45 @@ export class TierSelector {
         /* ignore */
       }
     }
-    const apiKey = config.omniroute.apiKey;
-    const omnirouteUrl = config.omniroute.url;
-    let provider = existing.provider as any;
-    if (provider) {
-      for (const prov of Object.values(provider) as any[]) {
-        if (!prov.options) prov.options = {};
-        if (!prov.options.apiKey) prov.options.apiKey = apiKey;
-        if (!prov.apiKey) prov.apiKey = apiKey;
-      }
-      if (provider.openai) {
-        if (!provider.openai.options) provider.openai.options = {};
-        provider.openai.options.baseURL = `${omnirouteUrl}/v1`;
-      }
-    } else {
-      provider = {
-        openai: {
-          apiKey,
-          options: {
-            baseURL: `${omnirouteUrl}/v1`,
-            headerTimeout: 120000,
-            timeout: 180000,
-          },
-        },
-      };
-    }
-    
-    // Map custom tiers to OmniRoute auto-routing model names
-    const tierToModel: Record<string, string> = {
-      'tier-4-planner': 'auto/best-reasoning',
-      'tier-3-builder': 'auto/best-coding',
-      'tier-2-hunter': 'auto/best-coding',
-      'tier-1-trivial': 'auto/fast',
-    };
-    const mappedModel = tierToModel[tier] || 'auto/best-coding';
+    const mrUrl = config.modelRouter.url;
 
-    const allModels = Object.values(tierToModel);
-    const prov = (provider ?? {}) as Record<string, any>;
-    if (!prov.openai) prov.openai = {};
-    prov.openai.models = {};
+    // Map tiers to specific OpenCode Free models
+    const TIER_MODEL_MAP: Record<string, string> = {
+      'tier-4-planner': 'big-pickle',
+      'tier-3-builder': 'deepseek-v4-flash-free',
+      'tier-2-hunter': 'north-mini-code-free',
+      'tier-1-trivial': 'minimax-m3-free',
+    };
+    const mappedModel = TIER_MODEL_MAP[tier] || 'deepseek-v4-flash-free';
+
+    const allModels = Object.values(TIER_MODEL_MAP);
+    const models: Record<string, unknown> = {};
     for (const m of allModels) {
-      prov.openai.models[m] = {
-        id: m,
+      models[m] = {
+        name: m,
         limit: { context: 128000, output: 8192 },
       };
     }
 
+    // Custom provider with @ai-sdk/openai-compatible (required for opencode v1.17+)
+    // Using a custom key avoids OpenCode's built-in provider behavior which ignores
+    // options.baseURL (ref: GitHub issue #5674).
+    const provider: Record<string, unknown> = {
+      'model-router': {
+        npm: '@ai-sdk/openai-compatible',
+        name: 'ModelRouter',
+        options: {
+          baseURL: `${mrUrl}/v1`,
+          apiKey: 'bridge-telegram-model-router',
+        },
+        models,
+      },
+    };
+
     const opencodeConfig: Record<string, unknown> = {
       $schema: (existing.$schema as string) || 'https://opencode.ai/config.json',
       permission: existing.permission || 'allow',
-      model: `openai/${mappedModel}`,
+      model: `model-router/${mappedModel}`,
       fallbacks: existing.fallbacks,
       cooldown_seconds: existing.cooldown_seconds,
       small_model: existing.small_model,

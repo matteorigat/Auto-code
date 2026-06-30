@@ -14,7 +14,7 @@ export function createSettingsRouter({ config }) {
     router.get('/model-credentials', (req, res) => {
         const creds = PROVIDER_KEYS.map((p) => ({
             ...p,
-            configured: !!(process.env[p.envKey] || config.omniroute?.providerKeys?.[p.id]),
+            configured: !!process.env[p.envKey],
         }));
         res.json(creds);
     });

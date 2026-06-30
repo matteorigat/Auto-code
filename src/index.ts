@@ -15,9 +15,11 @@ import { createMessageHandler } from './bot/message-handler.js';
 import { createCallbackHandler } from './bot/callback-handler.js';
 import { getTelemetryClient } from './dashboard/telemetry-client.js';
 import { DashboardServer } from './dashboard/server.js';
+import { ModelRouter } from './core/model-router.js';
 
 const telemetry = getTelemetryClient();
 
+const modelRouter = new ModelRouter(config.modelRouter.port);
 const processManager = new ProcessManager(config.system.rootDir);
 const opencodeClient = new OpenCodeClient(processManager);
 
@@ -63,16 +65,16 @@ opencodeClient.eventBus.on('event', (evt) => {
 
 // Periodically send health status to dashboard
 const HEALTH_PING_INTERVAL = setInterval(() => {
-  telemetry.healthPing({
-    omniroute: processManager.omnirouteProc ? { running: true } : { running: false },
-    opencode: processManager.healthOk
-      ? { running: true }
-      : { running: false, restartDelay: processManager.opencodeRestartDelay },
-    loop: loopManager.childProc
-      ? { running: true, phase: loopManager.currentPhase }
-      : { running: false },
-    bridge: { uptime: Math.floor((Date.now() - processManager.startupTime) / 1000) },
-  });
+    telemetry.healthPing({
+      'model-router': { running: true },
+      opencode: processManager.healthOk
+        ? { running: true }
+        : { running: false, restartDelay: processManager.opencodeRestartDelay },
+      loop: loopManager.childProc
+        ? { running: true, phase: loopManager.currentPhase }
+        : { running: false },
+      bridge: { uptime: Math.floor((Date.now() - processManager.startupTime) / 1000) },
+    });
 }, 5000);
 HEALTH_PING_INTERVAL.unref();
 
@@ -108,7 +110,7 @@ const handleCallback = createCallbackHandler(bot, loopManager);
 const pollingManager = new PollingManager(bot, handleMessage, handleCallback);
 
 console.log('Starting modular bridge...');
-processManager.startOmniRoute();
+modelRouter.start();
 processManager.startOpencode();
 processManager.startHealthServer(() => !!loopManager.childProc);
 

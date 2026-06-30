@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { readFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -13,12 +12,14 @@ export function createSystemRouter({ telemetryStore, config }) {
         if (now - diskCache.lastCheck < 60000)
             return;
         try {
-            const { stdout } = await execFileAsync('df', ['-BG', '/'], {
+            const isMac = process.platform === 'darwin';
+            const args = isMac ? ['-g', '/'] : ['-BG', '/'];
+            const { stdout } = await execFileAsync('df', args, {
                 encoding: 'utf-8',
                 timeout: 2000,
             });
             const parts = stdout.trim().split('\n').pop()?.split(/\s+/);
-            if (parts) {
+            if (parts && parts.length >= 5) {
                 diskCache = {
                     used: parseInt(parts[2]),
                     total: parseInt(parts[1]),
@@ -38,52 +39,48 @@ export function createSystemRouter({ telemetryStore, config }) {
         const ws = telemetryStore.ws;
         const count = ws ? ws.getClientCount() : 0;
         const row = telemetryStore.collector.get('SELECT COUNT(*) as count FROM events');
-        let orHealth = null;
-        const apiKey = process.env.OMNIROUTE_API_KEY || process.env.API_KEY_SECRET || '';
-        if (apiKey) {
-            try {
-                const r = await fetch('http://127.0.0.1:20128/api/monitoring/health', {
-                    signal: AbortSignal.timeout(3000),
-                });
-                if (r.ok)
-                    orHealth = (await r.json());
-            }
-            catch {
-                // OmniRoute might not be running
-            }
+        let mrHealth = null;
+        try {
+            const r = await fetch('http://127.0.0.1:20128/api/health', {
+                signal: AbortSignal.timeout(3000),
+            });
+            if (r.ok)
+                mrHealth = (await r.json());
+        }
+        catch {
+            // ModelRouter might not be running
         }
         res.json({
             status: 'ok',
             ts: new Date().toISOString(),
             wsClients: count,
             eventsStored: row?.count || 0,
-            omniroute: orHealth ? { status: orHealth.status, version: orHealth.system?.version, uptime: orHealth.system?.uptime } : null,
+            modelRouter: mrHealth,
         });
     });
+    function cpuTimes() {
+        const cpus = os.cpus();
+        let total = 0;
+        let idle = 0;
+        for (const cpu of cpus) {
+            total += cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq;
+            idle += cpu.times.idle;
+        }
+        return { total, idle };
+    }
     router.get('/sysinfo', async (req, res, next) => {
         try {
             let cpu_pct = 0;
             try {
-                const stat1 = await readFile('/proc/stat', 'utf-8');
-                const cpu1 = stat1.split('\n').find((l) => l.startsWith('cpu '));
-                if (cpu1) {
-                    const p1 = cpu1.trim().split(/\s+/).slice(1).map(Number);
-                    const tot1 = p1.reduce((a, b) => a + b, 0);
-                    const idle1 = p1[3];
-                    await new Promise((r) => setTimeout(r, 100));
-                    const stat2 = await readFile('/proc/stat', 'utf-8');
-                    const cpu2 = stat2.split('\n').find((l) => l.startsWith('cpu '));
-                    if (cpu2) {
-                        const p2 = cpu2.trim().split(/\s+/).slice(1).map(Number);
-                        const tot2 = p2.reduce((a, b) => a + b, 0);
-                        const idle2 = p2[3];
-                        const td = tot2 - tot1, id = idle2 - idle1;
-                        cpu_pct = td > 0 ? parseFloat((((td - id) / td) * 100).toFixed(1)) : 0;
-                    }
-                }
+                const { total: tot1, idle: idle1 } = cpuTimes();
+                await new Promise((r) => setTimeout(r, 100));
+                const { total: tot2, idle: idle2 } = cpuTimes();
+                const td = tot2 - tot1;
+                const id = idle2 - idle1;
+                cpu_pct = td > 0 ? parseFloat((((td - id) / td) * 100).toFixed(1)) : 0;
             }
             catch {
-                // ignore /proc/stat read errors
+                // ignore CPU measurement errors
             }
             await getDiskUsage();
             res.json({

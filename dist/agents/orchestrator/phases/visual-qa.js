@@ -24,7 +24,7 @@ export async function handleVisualQa(context) {
         const ws = task.workspacePath || projectPath;
         updateStatus({
             phase: 'VISUAL_QA',
-            taskTitle: task.title,
+            taskTitle: `[${task.id}] Initiating visual validations...`,
             taskId: task.id,
         });
         state.transition('VISUAL_QA', {
@@ -34,6 +34,11 @@ export async function handleVisualQa(context) {
         let screenshotBase64 = null;
         const puppeteerDefault = puppeteerMod?.default;
         if (puppeteerMod && puppeteerDefault) {
+            updateStatus({
+                phase: 'VISUAL_QA',
+                taskTitle: `[${task.id}] Launching browser & capturing screenshot...`,
+                taskId: task.id,
+            });
             log(`[VISUAL_QA] Attempting to screenshot UI for ${taskId}`);
             let browser = null;
             try {
@@ -57,6 +62,11 @@ export async function handleVisualQa(context) {
             log(`[VISUAL_QA] Skipping screenshot capture because Puppeteer/Chrome is disabled or not installable on this system.`);
         }
         if (screenshotBase64) {
+            updateStatus({
+                phase: 'VISUAL_QA',
+                taskTitle: `[${task.id}] Reviewing UI layout with visual-reviewer...`,
+                taskId: task.id,
+            });
             log(`[VISUAL_QA] Invoking visual-reviewer AgentRuntime`);
             const tierSelector = new TierSelector();
             const tier = tierSelector.select('QA');

@@ -22,7 +22,7 @@ function fmtCost(n) {
 }
 
 const PROVIDER_COLORS = {
-  omniroute: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
+  'model-router': 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
   openrouter: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
   groq: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
   openai: 'bg-green-500/10 text-green-400 border-green-500/20',

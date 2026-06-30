@@ -124,12 +124,12 @@ export class WizardFSM {
                         await writeFile(join(w.newPath, '.opencode', 'opencode.json'), JSON.stringify({
                             $schema: 'https://opencode.ai/config.json',
                             permission: 'allow',
-                            model: 'openai/tier-4-planner',
+                            model: 'model-router/tier-4-planner',
                             compaction: { auto: true, prune: true, reserved: 30000 },
                             provider: {
                                 openai: {
                                     options: {
-                                        baseURL: 'http://127.0.0.1:4000/v1',
+                                        baseURL: config.modelRouter.url + '/v1',
                                     },
                                 },
                             },

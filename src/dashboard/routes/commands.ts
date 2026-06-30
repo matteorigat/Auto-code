@@ -15,8 +15,6 @@ export interface SystemController {
     currentProjectPath: string | null;
   };
   processManager?: {
-    startOmniRoute: () => void;
-    stopOmniRoute: () => void;
     startOpencode: () => void;
     stopOpencode: () => void;
   };
@@ -153,20 +151,6 @@ export function createCommandsRouter({ systemController, telemetryStore, config 
       }
 
       const pm = systemController.processManager;
-
-      if (processName === 'omniroute') {
-        if (action === 'start') {
-          pm.startOmniRoute();
-        } else if (action === 'stop') {
-          pm.stopOmniRoute();
-        } else if (action === 'restart') {
-          pm.stopOmniRoute();
-          setTimeout(() => pm.startOmniRoute(), 1000);
-        } else {
-          return res.status(400).json({ error: `Unknown action: ${action}` });
-        }
-        return res.json({ status: 'ok' });
-      }
 
       if (processName === 'opencode') {
         if (action === 'start') {

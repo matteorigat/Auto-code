@@ -5,7 +5,7 @@ import { TierSelector } from '../../../src/core/tier-selector.js';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export async function handleExec(context) {
     const { tasks, stream, log, updateStatus, projectPath, state, safety } = context;
-    log(`[EXEC] Running EXEC phase...`);
+    log(`[CODE] Running CODE phase...`);
     const currentState = state.get() || {};
     const execTaskIds = (currentState.execTaskIds || []);
     if (!execTaskIds.length) {
@@ -28,22 +28,23 @@ export async function handleExec(context) {
             console.error('Ignored error:', e.message);
         }
         if (!dockerAvailable) {
-            log(`[EXEC] Docker unavailable. Falling back to sequential mode.`);
+            log(`[CODE] Docker unavailable. Falling back to sequential mode.`);
             mode = 'sequential';
         }
     }
-    log(`[EXEC] Running builder for tasks: ${tasksToRun.map((t) => t.id).join(', ')} (${mode})`);
+    log(`[CODE] Running builder for tasks: ${tasksToRun.map((t) => t.id).join(', ')} (${mode})`);
     const runTask = (task) => {
         return new Promise((resolve) => {
             const ws = task.workspacePath || projectPath;
-            updateStatus({ phase: 'EXEC', taskTitle: task.title, taskId: task.id });
-            state.transition('EXEC', {
+            updateStatus({ phase: 'CODE', taskTitle: `[${task.id}] Spawning isolated build worker process...`, taskId: task.id });
+            state.transition('CODE', {
                 currentTaskId: task.id,
                 currentStory: task.title,
             });
-            log(`[EXEC] [${task.id}] — Starting Isolated Worker Process`);
+            updateStatus({ phase: 'CODE', taskTitle: `[${task.id}] Implementing code changes: "${task.title}"...`, taskId: task.id });
+            log(`[CODE] [${task.id}] — Starting Isolated Worker Process`);
             const tierSelector = new TierSelector();
-            const tier = tierSelector.select('EXEC');
+            const tier = tierSelector.select('CODE');
             tierSelector.applyTierConfig(tier, ws);
             const workerPath = join(__dirname, '../../workers/builder-worker.js');
             const worker = fork(workerPath, [], {
@@ -90,7 +91,7 @@ export async function handleExec(context) {
         const results = await Promise.all(tasksToRun.map((t) => runTask(t)));
         const failed = results.filter((r) => !r.success);
         if (failed.length > 0) {
-            log(`[EXEC] ${failed.length} tasks failed in parallel mode.`);
+            log(`[CODE] ${failed.length} tasks failed in parallel mode.`);
             stream.emit('System', 'system', { action: 'PhaseChange', phase: 'IDLE' });
         }
         else {

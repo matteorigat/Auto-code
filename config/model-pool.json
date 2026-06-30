@@ -1,25 +1,25 @@
 {
   "models": [
     {
-      "id": "openai/tier-1-trivial",
+      "id": "model-router/tier-1-trivial",
       "description": "LiteLLM Pool - Tier 1: Trivial & Fast Tasks",
       "tier": 1,
       "cost": "free"
     },
     {
-      "id": "openai/tier-2-hunter",
+      "id": "model-router/tier-2-hunter",
       "description": "LiteLLM Pool - Tier 2: Bug Hunter & Discovery",
       "tier": 2,
       "cost": "free"
     },
     {
-      "id": "openai/tier-3-builder",
+      "id": "model-router/tier-3-builder",
       "description": "LiteLLM Pool - Tier 3: Standard Builders & QA",
       "tier": 3,
       "cost": "free"
     },
     {
-      "id": "openai/tier-4-planner",
+      "id": "model-router/tier-4-planner",
       "description": "LiteLLM Pool - Tier 4: Complex Coding & Planning",
       "tier": 4,
       "cost": "free"

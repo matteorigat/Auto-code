@@ -118,11 +118,28 @@ export function mountProviderStats(container, state) {
     const update = () => {
         if (state.activeTab !== 'provider-stats')
             return;
-        const data = state.omnirouteProviderStats;
-        if (!data) {
-            container.innerHTML = '<div class="text-zinc-500 text-xs py-8 text-center">Waiting for OmniRoute provider stats...</div>';
+        const stats = state.modelRouterStats;
+        if (!stats) {
+            container.innerHTML = '<div class="text-zinc-500 text-xs py-8 text-center">Waiting for Model Router provider stats...</div>';
             return;
         }
+        // Transform model-router stats into provider-stats format
+        const providers = Object.entries(stats.byTier || {}).map(([key, val]) => ({
+            provider: key,
+            totalRequests: val.calls || 0,
+            successfulRequests: val.calls || 0,
+            avgLatencyMs: 0,
+            totalTokensIn: val.tokensIn || 0,
+            totalTokensOut: val.tokensOut || 0,
+        }));
+        const models = Object.entries(stats.perModel || {}).map(([key, val]) => ({
+            model: key,
+            provider: 'opencode-free',
+            requests: val.calls || 0,
+            successfulRequests: (val.calls || 0) - (val.failures || 0),
+            avgLatencyMs: 0,
+        }));
+        const data = { providers, models };
         renderTables(data);
         renderLatencyChart(data);
     };

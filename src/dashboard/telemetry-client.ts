@@ -78,7 +78,7 @@ export class TelemetryClient {
   }
 
   logCall(callData: Record<string, unknown>): void {
-    this.emit('model.call', 'omniroute', 'Model call', { data: callData });
+    this.emit('model.call', 'model-router', 'Model call', { data: callData });
   }
   healthPing(services: Record<string, unknown>): void {
     this.emit('process.status', 'bridge', 'Health ping', { data: services });

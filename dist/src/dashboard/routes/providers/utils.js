@@ -8,13 +8,9 @@ export function formatDateTime(date) {
 }
 export async function runModelHealthProbe(modelName) {
     try {
-        const apiKey = config.omniroute.apiKey;
-        const res = await fetch(`${config.omniroute.url}/v1/chat/completions`, {
+        const res = await fetch(`${config.modelRouter.url}/v1/chat/completions`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${apiKey}`,
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model: modelName,
                 messages: [{ role: 'user', content: 'ping' }],
@@ -49,7 +45,7 @@ export async function runModelHealthProbe(modelName) {
             errMsg = 'TimeoutError: 408';
         }
         else if (errMsg.includes('ECONNREFUSED')) {
-            errMsg = 'ConnectionRefusedError: OmniRoute proxy not running';
+            errMsg = 'ConnectionRefusedError: model-router not running';
         }
         return { status: 'unhealthy', errorDetails: errMsg };
     }

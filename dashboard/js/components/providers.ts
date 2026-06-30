@@ -33,7 +33,7 @@ export function mountProviders(container, state) {
   container.innerHTML = `
     <h3 class="text-sm font-semibold text-zinc-200 mb-4">Provider Health & Activity</h3>
 
-    <!-- OmniRoute Health Matrix -->
+    <!-- Model Router Health Matrix -->
     <div id="or-health-matrix" class="mb-6">
       <div class="flex items-center justify-between mb-3">
         <span class="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Real-Time Health Matrix</span>
@@ -104,9 +104,17 @@ export function mountProviders(container, state) {
   function renderMatrix() {
     const matrix = state.providerHealthMatrix;
     if (!matrix || !matrix.providers) {
-      matrixCards.innerHTML = '<div class="text-zinc-600 text-xs py-4 text-center col-span-full">OmniRoute health-matrix unavailable</div>';
+      matrixCards.innerHTML = '<div class="text-zinc-600 text-xs py-4 text-center col-span-full">Model Router health-matrix unavailable</div>';
       return;
     }
+
+    // Handle both object format { opencode-free: {...}, ... } and legacy array
+    const providerEntries = Array.isArray(matrix.providers)
+      ? (matrix.providers as any[])
+      : Object.entries(matrix.providers as Record<string, any>).map(([key, val]) => ({
+          provider: key,
+          ...val,
+        }));
 
     const summary = matrix.summary || {};
     mHealthy.textContent = summary.healthyCount ?? '?';
@@ -116,45 +124,53 @@ export function mountProviders(container, state) {
     mModels.textContent = summary.modelCount ?? '?';
     matrixTime.textContent = matrix.checkedAt ? new Date(matrix.checkedAt).toLocaleTimeString() : '—';
 
-    matrixCards.innerHTML = (matrix.providers as any[] || []).map(p => {
+    matrixCards.innerHTML = providerEntries.map(p => {
       const conn = p.connections || {};
-      const activeBar = bar(conn.active || 0, conn.total || 1, 'bg-success');
-      const totalConns = conn.total || 0;
-      const srColor = p.successRate >= 95 ? 'text-success' : p.successRate >= 80 ? 'text-warning' : 'text-danger';
+      const active = conn.active ?? p.activeSlots ?? 0;
+      const total = conn.total ?? p.totalSlots ?? 1;
+      const activeBar = bar(active, total, 'bg-success');
+      const totalConns = total;
+      const sr = p.successRate ?? (p.totalCalls > 0 ? ((p.totalCalls - p.totalFailures) / p.totalCalls) * 100 : 100);
+      const srColor = sr >= 95 ? 'text-success' : sr >= 80 ? 'text-warning' : 'text-danger';
+      const score = p.score ?? (total > 0 ? active / total : 0);
+      const requests = p.requests ?? p.totalCalls ?? 0;
+      const avgLat = p.avgLatencyMs ?? null;
+      const cbOpen = p.circuitBreaker ?? (p.circuitOpenSlots > 0);
+      const lastReq = p.lastRequestAt ?? null;
 
       return `<div class="bg-white/[0.01] border border-white/5 rounded-xl p-3 hover:border-white/10 transition">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-semibold text-zinc-200 capitalize">${escapeHtml(p.provider)}</span>
-          ${stateBadge(p.state, p.score)}
+          ${stateBadge(p.state, score)}
         </div>
         <div class="space-y-1.5 text-[10px]">
           <div class="flex items-center justify-between">
             <span class="text-zinc-500">Score</span>
-            <span class="font-mono font-bold text-zinc-200">${(p.score * 100).toFixed(0)}%</span>
+            <span class="font-mono font-bold text-zinc-200">${(score * 100).toFixed(0)}%</span>
           </div>
           <div class="flex items-center justify-between">
             <span class="text-zinc-500">Connections</span>
-            <span class="font-mono text-zinc-300">${totalConns} (${conn.active || 0} active)</span>
+            <span class="font-mono text-zinc-300">${totalConns} (${active} active)</span>
           </div>
           <div class="flex items-center gap-2">
             <span class="text-zinc-500 w-16 shrink-0">Active</span>
             ${activeBar}
-            <span class="font-mono text-zinc-400 w-12 text-right">${conn.active || 0}/${totalConns}</span>
+            <span class="font-mono text-zinc-400 w-12 text-right">${active}/${totalConns}</span>
           </div>
           <div class="flex items-center justify-between">
             <span class="text-zinc-500">Requests</span>
-            <span class="font-mono text-zinc-300">${p.requests || 0}</span>
+            <span class="font-mono text-zinc-300">${requests}</span>
           </div>
           <div class="flex items-center justify-between">
             <span class="text-zinc-500">Success</span>
-            <span class="font-mono font-bold ${srColor}">${fmtPct(p.successRate)}</span>
+            <span class="font-mono font-bold ${srColor}">${fmtPct(sr)}</span>
           </div>
           <div class="flex items-center justify-between">
             <span class="text-zinc-500">Latency</span>
-            <span class="font-mono text-zinc-300">${fmtMs(p.avgLatencyMs)}</span>
+            <span class="font-mono text-zinc-300">${fmtMs(avgLat)}</span>
           </div>
-          ${p.circuitBreaker ? `<div class="flex items-center gap-1.5 text-danger/80 font-semibold"><span class="w-1 h-1 rounded-full bg-danger pulse-dot"></span>Circuit open</div>` : ''}
-          ${p.lastRequestAt ? `<div class="text-[8px] text-zinc-600 font-mono mt-1 border-t border-white/[0.02] pt-1">last: ${new Date(p.lastRequestAt).toLocaleTimeString()}</div>` : ''}
+          ${cbOpen ? '<div class="flex items-center gap-1.5 text-danger/80 font-semibold"><span class="w-1 h-1 rounded-full bg-danger pulse-dot"></span>Circuit open</div>' : ''}
+          ${lastReq ? `<div class="text-[8px] text-zinc-600 font-mono mt-1 border-t border-white/[0.02] pt-1">last: ${new Date(lastReq).toLocaleTimeString()}</div>` : ''}
         </div>
       </div>`;
     }).join('');

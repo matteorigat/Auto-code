@@ -1,36 +1,50 @@
 import { Router } from 'express';
 import { createHealthRouter } from './providers/health.js';
-const OR_API_KEY = () => process.env.OMNIROUTE_API_KEY || process.env.API_KEY_SECRET || '';
-async function fetchOrHealthMatrix() {
-    const apiKey = OR_API_KEY();
-    if (!apiKey)
-        return null;
+async function proxyModelRouter(path) {
     try {
-        const res = await fetch('http://127.0.0.1:20128/api/providers/health-matrix', {
-            headers: { Authorization: `Bearer ${apiKey}` },
-            signal: AbortSignal.timeout(5000),
-        });
-        if (!res.ok)
-            return null;
-        return (await res.json());
+        const base = process.env.MODELROUTER_URL || 'http://127.0.0.1:20128';
+        const r = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(5000) });
+        if (r.ok)
+            return (await r.json());
     }
-    catch {
-        return null;
-    }
+    catch { /* ModelRouter unavailable */ }
+    return null;
 }
-export function createProvidersRouter({ collector, telemetryStore }) {
+export function createProvidersRouter({ config, collector, telemetryStore }) {
     const router = Router();
-    router.get('/providers-matrix', async (req, res, next) => {
+    router.get('/providers-matrix', async (req, res) => {
+        const data = await proxyModelRouter('/api/providers/health-matrix');
+        res.json(data ?? { providers: {} });
+    });
+    router.get('/model-router/accounts', async (req, res) => {
+        const data = await proxyModelRouter('/api/model-router/accounts');
+        res.json(data ?? { total: 0, accounts: [] });
+    });
+    router.get('/model-router/stats', async (req, res) => {
+        const data = await proxyModelRouter('/api/model-router/stats');
+        res.json(data ?? { totalRequests: 0, totalFailures: 0, perModel: {} });
+    });
+    router.get('/model-router/logs', async (req, res) => {
+        const data = await proxyModelRouter('/api/model-router/logs');
+        res.json(data ?? { logs: [] });
+    });
+    router.get('/model-router/models', async (req, res) => {
+        const data = await proxyModelRouter('/api/model-router/models');
+        res.json(data ?? { tiers: {}, aliases: {}, stats: {} });
+    });
+    router.post('/model-router/reset-slot', async (req, res) => {
         try {
-            const matrix = await fetchOrHealthMatrix();
-            if (!matrix) {
-                res.json({ error: 'OmniRoute health-matrix unavailable' });
-                return;
-            }
-            res.json(matrix);
+            const base = process.env.MODELROUTER_URL || 'http://127.0.0.1:20128';
+            const r = await fetch(`${base}/api/model-router/reset-slot`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(req.body),
+                signal: AbortSignal.timeout(5000),
+            });
+            res.status(r.status).json(await r.json());
         }
-        catch (e) {
-            next(e);
+        catch {
+            res.status(502).json({ error: 'ModelRouter unavailable' });
         }
     });
     router.use(createHealthRouter({ collector, telemetryStore }));

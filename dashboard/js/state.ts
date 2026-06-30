@@ -18,7 +18,7 @@ export class AppState {
     };
     this.bridgeState = {
       opencode: { running: false },
-      omniroute: { running: false },
+      'model-router': { running: false },
       loop: { running: false, phase: 'IDLE' },
     };
     this.calls = [];
@@ -30,8 +30,10 @@ export class AppState {
     this.dailyData = [];
     this.hitl = null;
     this.providerHealthMatrix = null;
-    this.omnirouteUsageAnalytics = null;
-    this.omnirouteProviderStats = null;
+    this.modelRouterAccounts = null;
+    this.modelRouterStats = null;
+    this.modelRouterLogs = [];
+    this.modelRouterModels = null;
     this.activeTab = 'overview';
     this.timeRange = '1d';
     this.listeners = new Set();
@@ -74,7 +76,7 @@ export class AppState {
       const cost = c.cost ?? cData.cost ?? nestedUsage.cost?.total ?? 0;
       this.calls.push({
         ts: c.ts,
-        provider: c.provider || cData.provider || 'omniroute',
+        provider: c.provider || cData.provider || 'model-router',
         model: c.model || c.modelId || cData.modelId || 'unknown',
         input_tokens: inp,
         output_tokens: out,
@@ -172,7 +174,7 @@ export class AppState {
 
       const callRecord = {
         ts: ev.ts,
-        provider: callData.provider || ev.source || 'omniroute',
+        provider: callData.provider || ev.source || 'model-router',
         model: callData.modelId || callData.model || ev.message || 'unknown',
         input_tokens: inp,
         output_tokens: out,

@@ -61,11 +61,11 @@ export interface AppConfig {
     model: string;
     mode: string;
   };
-  omniroute: {
+  modelRouter: {
     port: number;
     url: string;
-    apiKey: string;
-    providerKeys: Record<string, string>;
+    opencodeZenApiKey?: string;
+    openrouterApiKey?: string;
   };
   loop: {
     dailyCostLimit: number;
@@ -116,27 +116,14 @@ const config: AppConfig = {
   opencode: {
     port: parseNum(process.env.OPENCODE_PORT, 4096),
     url: process.env.OC_URL || `http://127.0.0.1:${parseNum(process.env.OPENCODE_PORT, 4096)}`,
-    model: process.env.OPENCODE_DEFAULT_MODEL || 'openai/tier-4-planner',
+    model: process.env.OPENCODE_DEFAULT_MODEL || 'model-router/tier-4-planner',
     mode: process.env.BRIDGE_MODE || 'api',
   },
-  omniroute: {
-    port: parseNum(process.env.OMNIROUTE_PORT, 20128),
-    url: process.env.OMNIROUTE_URL || `http://127.0.0.1:${parseNum(process.env.OMNIROUTE_PORT, 20128)}`,
-    apiKey: process.env.OMNIROUTE_API_KEY || process.env.API_KEY_SECRET || '***REMOVED***',
-    providerKeys: {
-      openrouter: process.env.OPENROUTER_API_KEY || '',
-      nvidia: process.env.NVIDIA_API_KEY || '',
-      groq: process.env.GROQ_API_KEY || '',
-      mistral: process.env.MISTRAL_API_KEY || '',
-      cerebras: process.env.CEREBRAS_API_KEY || '',
-      xai: process.env.XAI_API_KEY || '',
-      gemini: process.env.GEMINI_API_KEY || '',
-      kilocode: process.env.KILOCODE_API_KEY || '',
-      kilo: process.env.KILO_API_KEY || '',
-      artificialAnalysis: process.env.ARTIFICIAL_ANALYSIS_API_KEY || '',
-      opencode: process.env.OPENCODE_API_KEY || '',
-      ollama: process.env.OLLAMA_API_KEY || '',
-    },
+  modelRouter: {
+    port: parseNum(process.env.MODELROUTER_PORT, 20128),
+    url: process.env.MODELROUTER_URL || `http://127.0.0.1:${parseNum(process.env.MODELROUTER_PORT, 20128)}`,
+    opencodeZenApiKey: process.env.OPENCODE_ZEN_API_KEY || process.env.OPENCODE_API_KEY,
+    openrouterApiKey: process.env.OPENROUTER_API_KEY,
   },
   loop: {
     dailyCostLimit: parseNum(process.env.LOOP_DAILY_COST_LIMIT, 10.0),

@@ -51,10 +51,20 @@ async function main() {
             telemetry.info('orchestrator', msg);
         },
         updateStatus: (delta) => {
+            if (!delta.project) {
+                const taskId = delta.taskId || state.get()?.currentTaskId;
+                if (taskId) {
+                    const tasksArr = tasks._tasks || [];
+                    const task = tasksArr.find((t) => String(t.id) === String(taskId));
+                    if (task?._projectSlug) {
+                        delta.project = task._projectSlug;
+                    }
+                }
+            }
             telegram.updateStatus(delta);
             try {
                 const statePath = join(projectPath, '.hydra', 'loop-state.json');
-                writeFileSync(statePath, JSON.stringify(telegram._status, null, 2));
+                writeFileSync(statePath, JSON.stringify(telegram.getStatus() ?? {}, null, 2));
             }
             catch (e) {
                 console.error('Ignored error:', e.message);
@@ -77,6 +87,7 @@ async function main() {
         ['IDLE', handleIdle],
         ['PLAN', handlePlan],
         ['EXEC', handleExec],
+        ['CODE', handleExec],
         ['QA', handleQa],
         ['VISUAL_QA', handleVisualQa],
         ['FIX', handleFix],
@@ -98,12 +109,16 @@ async function main() {
                 const payload = transitionQueue.shift();
                 const currentState = await state.load();
                 context.log(`[EventStream] Transitioning to phase: ${payload.phase}`);
+                const tasksArr = tasks._tasks || [];
+                const activeTaskId = payload.stateUpdates?.currentTaskId || currentState.currentTaskId;
+                const activeTask = tasksArr.find((t) => String(t.id) === String(activeTaskId));
+                const projectSlug = activeTask?._projectSlug || payload.stateUpdates?.project || currentState?.project || projectPath.split('/').pop();
                 telemetry.emit('phase.transition', 'orchestrator', `Phase: ${payload.phase}`, {
                     data: {
                         from: currentState.phase || 'IDLE',
                         to: payload.phase,
-                        taskId: currentState.currentTaskId || null,
-                        projectSlug: projectPath.split('/').pop(),
+                        taskId: activeTaskId || null,
+                        projectSlug,
                     },
                 });
                 await state.transition(payload.phase, payload.stateUpdates);

@@ -43,6 +43,49 @@ export function mountHITL(container, state, api) {
     `;
   }
 
+  function renderWaitHumanBanner(loop) {
+    const reason = loop.humanGateReason || 'Loop execution paused by system/user.';
+    container.innerHTML = `
+      <div class="flex flex-col items-center justify-center min-h-[320px] text-center py-8 transition-all duration-500 select-none">
+        <div class="relative mb-5 animate-bounce">
+          <span class="text-5xl block">⏳</span>
+        </div>
+        <h4 class="text-xl font-bold text-warning">Loop Suspended / Awaiting Review</h4>
+        <p class="text-sm text-zinc-400 mt-2 max-w-md leading-relaxed">
+          The Orchestrator loop is currently in <strong>WAIT_HUMAN</strong> phase.
+        </p>
+        <div class="mt-4 bg-zinc-900/60 border border-warning/20 rounded-xl p-4 max-w-md text-left text-xs font-mono text-zinc-300">
+          <span class="text-warning font-bold uppercase text-[9px] block mb-1">Reason:</span>
+          "${escapeHtml(reason)}"
+        </div>
+        
+        <button id="hitl-resume-btn" class="mt-6 flex items-center justify-center gap-1.5 py-3 px-6 rounded-xl text-xs font-bold bg-success hover:bg-success/80 active:scale-[0.97] transition-all text-white border border-success/20 shadow-[0_0_12px_rgba(16,185,129,0.2)] outline-none">
+          <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Resume Loop Execution
+        </button>
+      </div>
+    `;
+
+    const resumeBtn = container.querySelector('#hitl-resume-btn');
+    if (resumeBtn) {
+      resumeBtn.addEventListener('click', () => {
+        const origHTML = resumeBtn.innerHTML;
+        resumeBtn.innerHTML = '<div class="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin mx-auto"></div>';
+        resumeBtn.disabled = true;
+        api.post('/bridge-cmd', { cmd: 'resume' }).then(() => {
+          resumeBtn.innerHTML = '<span class="text-white text-xs font-bold">✓ Resumed</span>';
+        }).catch(() => {
+          resumeBtn.innerHTML = '<span class="text-danger text-xs font-bold">✗ Failed</span>';
+        }).finally(() => {
+          setTimeout(() => {
+            resumeBtn.innerHTML = origHTML;
+            resumeBtn.disabled = false;
+          }, 1200);
+        });
+      });
+    }
+  }
+
   function renderGate(hitl) {
     if (!hitl || !hitl.active) { renderEmpty(); return; }
 
@@ -187,8 +230,13 @@ export function mountHITL(container, state, api) {
   const render = () => {
     if (state.activeTab !== 'hitl') return;
     const hitl = state.hitl;
+    const loop = state.bridgeState?.loop || {};
+    const isWaitHumanPhase = loop.phase === 'WAIT_HUMAN';
+
     if (hitl && hitl.active) {
       renderGate(hitl);
+    } else if (isWaitHumanPhase) {
+      renderWaitHumanBanner(loop);
     } else {
       renderEmpty();
     }

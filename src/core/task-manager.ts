@@ -211,11 +211,11 @@ export class TaskManager {
   _sortAndResolveDependencies(): Story[] {
     const inferDeps = (stories: Story[]): Story[] => {
       const isInfra = (s: Story) =>
-        /schema|database|table|migration|model|api|backend/i.test(
+        /\b(schema|database|table|migration|models?|apis?|backend)s?\b/i.test(
           s.title + ' ' + (s.description || ''),
         );
       const isUI = (s: Story) =>
-        /page|component|ui|display|view|frontend|screen/i.test(
+        /\b(page|components?|ui|display|view|frontend|screen)s?\b/i.test(
           s.title + ' ' + (s.description || ''),
         );
       return stories.map((s) => {
@@ -223,11 +223,31 @@ export class TaskManager {
         if (!Array.isArray(explicitDeps)) {
           explicitDeps = [String(explicitDeps)];
         }
-        const deps = new Set(explicitDeps.map(String));
+        
+        // Filter out any dependencies that do not belong to the same project
+        const deps = new Set(
+          explicitDeps
+            .map(String)
+            .filter((depId) => {
+              const depTask = stories.find((t) => String(t.id) === depId);
+              if (!depTask) return false;
+              return (
+                depTask._projectSlug === s._projectSlug ||
+                depTask._projectSlug === null ||
+                s._projectSlug === null
+              );
+            })
+        );
 
         if (deps.size === 0 && isUI(s)) {
           for (const other of stories) {
-            if (other.id !== s.id && isInfra(other)) deps.add(String(other.id));
+            if (
+              other.id !== s.id &&
+              other._projectSlug === s._projectSlug &&
+              isInfra(other)
+            ) {
+              deps.add(String(other.id));
+            }
           }
         }
         return { ...s, _deps: Array.from(deps) };

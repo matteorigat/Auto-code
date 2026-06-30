@@ -13,7 +13,9 @@ import { createMessageHandler } from './bot/message-handler.js';
 import { createCallbackHandler } from './bot/callback-handler.js';
 import { getTelemetryClient } from './dashboard/telemetry-client.js';
 import { DashboardServer } from './dashboard/server.js';
+import { ModelRouter } from './core/model-router.js';
 const telemetry = getTelemetryClient();
+const modelRouter = new ModelRouter(config.modelRouter.port);
 const processManager = new ProcessManager(config.system.rootDir);
 const opencodeClient = new OpenCodeClient(processManager);
 const statePath = join(config.system.rootDir, '.hydra', 'chat-state.json');
@@ -56,7 +58,7 @@ opencodeClient.eventBus.on('event', (evt) => {
 // Periodically send health status to dashboard
 const HEALTH_PING_INTERVAL = setInterval(() => {
     telemetry.healthPing({
-        omniroute: processManager.omnirouteProc ? { running: true } : { running: false },
+        'model-router': { running: true },
         opencode: processManager.healthOk
             ? { running: true }
             : { running: false, restartDelay: processManager.opencodeRestartDelay },
@@ -88,7 +90,7 @@ const handleMessage = createMessageHandler(bot, loopManager, opencodeClient, wiz
 const handleCallback = createCallbackHandler(bot, loopManager);
 const pollingManager = new PollingManager(bot, handleMessage, handleCallback);
 console.log('Starting modular bridge...');
-processManager.startOmniRoute();
+modelRouter.start();
 processManager.startOpencode();
 processManager.startHealthServer(() => !!loopManager.childProc);
 const dashboardServer = new DashboardServer(config.dashboard?.port || 8081, {

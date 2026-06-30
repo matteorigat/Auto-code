@@ -55,13 +55,124 @@ export async function handleIdle(context: OrchestratorContext): Promise<void> {
     stream.emit('System', 'system', {
       action: 'PhaseChange',
       phase: 'PLAN',
-      stateUpdates: { readyTaskIds: readyTasks.map((t) => t.id) },
+      stateUpdates: {
+        readyTaskIds: readyTasks.map((t) => t.id),
+        idleDiscoverCount: 0,
+      },
     });
   } else {
-    log(`[IDLE] No ready tasks found. Transitioning to DISCOVER.`);
-    stream.emit('System', 'system', {
-      action: 'PhaseChange',
-      phase: 'DISCOVER',
-    });
+    // Check if everything is fully completed
+    let allFinished = false;
+    let hasUnplannedProjects = false;
+    const unplannedReadyTaskIds: string[] = [];
+
+    try {
+      const currentPrd = tasks.readPRD();
+      const projects = (currentPrd.projects || []) as any[];
+
+      if (projects.length > 0) {
+        const activeUncompleted = projects.filter((p) => !p.completed);
+
+        // B2: Projects with 0 stories need to be planned — synthesize a planning task for them
+        for (const p of activeUncompleted) {
+          const stories = p.stories || [];
+          if (stories.length === 0) {
+            // This project has never been planned — create a synthetic "plan this project" task
+            log(`[IDLE] Project "${p.slug || p.title}" has no stories yet — creating planning task.`);
+            const syntheticId = `PLAN-${(p.slug || p.title || 'project').replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${Date.now().toString(36)}`;
+            const syntheticTask: any = {
+              id: syntheticId,
+              title: `Plan project: ${p.title || p.slug}`,
+              description: p.description || `Initialize SDD specifications and story backlog for project "${p.slug}".`,
+              acceptanceCriteria: ['PLAN.md exists', 'PRODUCT-SPEC.md exists', 'TECHNICAL-SPEC.md exists', 'CONSTITUTION.md exists', 'prd.json has at least 1 story'],
+              priority: 1,
+              status: 'idle',
+              passes: false,
+              _projectSlug: p.slug,
+              _projectTitle: p.title,
+            };
+            unplannedReadyTaskIds.push(syntheticId);
+            hasUnplannedProjects = true;
+            // Inject task into manager's task array so PLAN can find it
+            const tasksArr = (tasks as any)._tasks as any[];
+            if (!tasksArr.find((t: any) => t.id === syntheticId)) {
+              tasksArr.push(syntheticTask);
+            }
+          }
+        }
+
+        if (!hasUnplannedProjects) {
+          const allStoriesCompleted = activeUncompleted.every((p) => {
+            const stories = p.stories || [];
+            return stories.length > 0 && stories.every((s: any) => s.passes || s.status === 'completed');
+          });
+          if (allStoriesCompleted && activeUncompleted.length > 0) {
+            log(`[IDLE] All active projects have all stories completed. Marking them as completed...`);
+            for (const p of activeUncompleted) {
+              p.completed = true;
+            }
+            tasks.writePRD(currentPrd);
+            allFinished = true;
+          } else if (projects.every((p) => p.completed)) {
+            allFinished = true;
+          }
+        }
+      }
+    } catch (_) {}
+
+    if (hasUnplannedProjects) {
+      log(`[IDLE] Found ${unplannedReadyTaskIds.length} unplanned project(s). Transitioning to PLAN.`);
+      stream.emit('System', 'system', {
+        action: 'PhaseChange',
+        phase: 'PLAN',
+        stateUpdates: {
+          readyTaskIds: unplannedReadyTaskIds,
+          idleDiscoverCount: 0,
+        },
+      });
+      return;
+    }
+
+    if (allFinished) {
+      log(`[IDLE] Every project in the loop backlog is completed. Transitioning to DONE and exiting loop.`);
+      stream.emit('System', 'system', {
+        action: 'PhaseChange',
+        phase: 'DONE',
+        stateUpdates: {
+          currentTaskId: null,
+          currentStory: null,
+          idleDiscoverCount: 0,
+        },
+      });
+      setTimeout(() => process.exit(0), 1000);
+      return;
+    }
+
+    let count = (currentState as any)?.idleDiscoverCount || 0;
+    if ((currentState as any)?.lastPhase === 'WAIT_HUMAN') {
+      count = 0;
+    }
+    const newCount = count + 1;
+
+    if (newCount >= 3) {
+      log(`[IDLE] No ready tasks found after 3 consecutive attempts. Suspending loop to avoid infinite cycling.`);
+      stream.emit('System', 'system', {
+        action: 'PhaseChange',
+        phase: 'WAIT_HUMAN',
+        stateUpdates: {
+          idleDiscoverCount: 0,
+          humanGateReason: 'Loop suspended: No ready tasks found after 3 cycles.',
+        },
+      });
+    } else {
+      log(`[IDLE] No ready tasks found (Attempt ${newCount}/3). Transitioning to DISCOVER.`);
+      stream.emit('System', 'system', {
+        action: 'PhaseChange',
+        phase: 'DISCOVER',
+        stateUpdates: {
+          idleDiscoverCount: newCount,
+        },
+      });
+    }
   }
 }

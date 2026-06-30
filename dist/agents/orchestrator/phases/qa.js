@@ -17,7 +17,7 @@ export async function handleQa(context) {
         if (!task)
             continue;
         const ws = task.workspacePath || projectPath;
-        updateStatus({ phase: 'QA', taskTitle: task.title, taskId: task.id });
+        updateStatus({ phase: 'QA', taskTitle: `[${task.id}] Preparing QA validations...`, taskId: task.id });
         state.transition('QA', {
             currentTaskId: task.id,
             currentStory: task.title,
@@ -32,6 +32,7 @@ export async function handleQa(context) {
         catch (e) {
             log(`[QA] Failed to clean up swarm-consensus.md: ${e.message}`);
         }
+        updateStatus({ phase: 'QA', taskTitle: `[${task.id}] Running static analysis & tests inside Docker sandbox...`, taskId: task.id });
         log(`[QA] Running gates for ${taskId} inside Docker sandbox`);
         const qa = await gate.run({ cwd: ws, taskId: task.id });
         if (qa.passed) {

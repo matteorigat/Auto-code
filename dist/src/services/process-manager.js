@@ -22,83 +22,18 @@ export class ProcessManager {
     OC_PORT = 4096;
     DASHBOARD_PORT;
     HEALTH_PORT;
-    omnirouteProc = null;
     opencodeProc = null;
     dashboardProc = null;
     healthOk = false;
     opencodeRestartDelay = 3000;
-    omnirouteRestartDelay = 3000;
     startupTime = Date.now();
     isShuttingDown = false;
     manualStopOpencode = false;
-    manualStopOmniRoute = false;
+    manualStopDashboard = false;
     constructor(bridgePath) {
         this.bridgePath = bridgePath;
         this.DASHBOARD_PORT = config.dashboard.port;
         this.HEALTH_PORT = config.health.port;
-    }
-    startOmniRoute() {
-        this.manualStopOmniRoute = false;
-        if (this.omnirouteProc)
-            return;
-        const port = config.omniroute.port;
-        const nvmDir = join(homedir(), '.nvm', 'versions', 'node');
-        const node22Dir = join(nvmDir, 'v22.22.3');
-        const node22Bin = join(node22Dir, 'bin', 'node');
-        const omnirouteEntry = join(node22Dir, 'lib', 'node_modules', 'omniroute', 'bin', 'omniroute.mjs');
-        if (!existsSync(omnirouteEntry)) {
-            console.warn('omniroute not found in nvm node22 global modules, skipping. Install with: nvm use 22 && npm install -g omniroute');
-            return;
-        }
-        const cleanEnv = {
-            PATH: `${join(node22Dir, 'bin')}:${process.env.PATH || ''}`,
-            NVM_BIN: join(node22Dir, 'bin'),
-            NVM_DIR: join(homedir(), '.nvm'),
-            HOME: homedir(),
-            USER: process.env.USER || '',
-            PORT: String(config.omniroute.port),
-            JWT_SECRET: process.env.JWT_SECRET || '***REMOVED***',
-            OMNIROUTE_API_KEY: process.env.API_KEY_SECRET || process.env.OMNIROUTE_API_KEY || '***REMOVED***',
-            API_KEY_SECRET: process.env.API_KEY_SECRET || process.env.OMNIROUTE_API_KEY || '***REMOVED***',
-            INITIAL_PASSWORD: process.env.INITIAL_PASSWORD || '***REMOVED***',
-            DATA_DIR: process.env.OMNIROUTE_DATA_DIR || join(homedir(), '.omniroute'),
-        };
-        this.omnirouteProc = spawn(node22Bin, [omnirouteEntry], {
-            stdio: ['ignore', 'pipe', 'pipe'],
-            env: cleanEnv,
-        });
-        this.omnirouteProc.on('error', (err) => console.error('[omniroute] spawn error:', err.message));
-        this.omnirouteProc.stdout?.on('data', (d) => pipeOutput(process.stdout, 'omniroute', d.toString()));
-        this.omnirouteProc.stderr?.on('data', (d) => pipeOutput(process.stderr, 'omniroute-err', d.toString()));
-        this.omnirouteProc.on('exit', async (code) => {
-            bus.telemetry('process.status', 'bridge', `OmniRoute exited (code ${code})`, {
-                level: 'warn',
-                data: { name: 'omniroute', status: 'stopped', code },
-            });
-            this.omnirouteProc = null;
-            if (this.isShuttingDown || this.manualStopOmniRoute)
-                return;
-            this.omnirouteRestartDelay = Math.min(this.omnirouteRestartDelay * 2, 60000);
-            await new Promise((resolve) => setTimeout(resolve, this.omnirouteRestartDelay));
-            if (this.isShuttingDown || this.manualStopOmniRoute)
-                return;
-            this.startOmniRoute();
-            const ok = await this.waitForOmniRoute(15);
-            if (ok)
-                this.omnirouteRestartDelay = 3000;
-        });
-    }
-    stopOmniRoute() {
-        this.manualStopOmniRoute = true;
-        if (this.omnirouteProc) {
-            try {
-                this.omnirouteProc.kill('SIGTERM');
-            }
-            catch {
-                // Best-effort
-            }
-            this.omnirouteProc = null;
-        }
     }
     startDashboard() {
         if (this.dashboardProc)
@@ -144,20 +79,6 @@ export class ProcessManager {
         for (let i = 0; i < retries; i++) {
             try {
                 const r = await fetch(`http://127.0.0.1:${this.DASHBOARD_PORT}/api/health`);
-                if (r.ok)
-                    return true;
-            }
-            catch {
-                // Not ready yet
-            }
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-        return false;
-    }
-    async waitForOmniRoute(retries = 15) {
-        for (let i = 0; i < retries; i++) {
-            try {
-                const r = await fetch(`http://127.0.0.1:${config.omniroute.port}/v1/models`, { headers: { Authorization: `Bearer ${config.omniroute.apiKey}` } });
                 if (r.ok)
                     return true;
             }
@@ -257,7 +178,6 @@ export class ProcessManager {
     stopAll() {
         this.isShuttingDown = true;
         this.stopDashboard();
-        this.stopOmniRoute();
         if (this.opencodeProc) {
             try {
                 this.opencodeProc.kill('SIGTERM');

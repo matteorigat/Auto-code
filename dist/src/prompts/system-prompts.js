@@ -41,7 +41,10 @@ Remember: each run is FRESH. Use files on disk for context.`,
 Deduplicate: if a story with similar title exists, SKIP it.
 Add acceptanceCriteria to new stories.
 Reorder by priority: 1 critical → 4 low.
-Never delete existing stories.`,
+Never delete existing stories.
+IMPORTANT: If any stories are blocked (status: "blocked"), analyze WHY and unblock them.
+Change blocked stories to "idle" status if the blocking reason is no longer valid or can be resolved.
+Set passes: true for any story that is already completed.`,
     'project-planner': `You are a Project Planner using SDD (Spec-Driven Development).
 A new project is starting with NO code yet. Design the complete implementation roadmap.
 

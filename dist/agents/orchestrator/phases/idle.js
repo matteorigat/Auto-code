@@ -41,14 +41,38 @@ export async function handleIdle(context) {
         stream.emit('System', 'system', {
             action: 'PhaseChange',
             phase: 'PLAN',
-            stateUpdates: { readyTaskIds: readyTasks.map((t) => t.id) },
+            stateUpdates: {
+                readyTaskIds: readyTasks.map((t) => t.id),
+                idleDiscoverCount: 0,
+            },
         });
     }
     else {
-        log(`[IDLE] No ready tasks found. Transitioning to DISCOVER.`);
-        stream.emit('System', 'system', {
-            action: 'PhaseChange',
-            phase: 'DISCOVER',
-        });
+        let count = currentState?.idleDiscoverCount || 0;
+        if (currentState?.lastPhase === 'WAIT_HUMAN') {
+            count = 0;
+        }
+        const newCount = count + 1;
+        if (newCount >= 3) {
+            log(`[IDLE] No ready tasks found after 3 consecutive attempts. Suspending loop to avoid infinite cycling.`);
+            stream.emit('System', 'system', {
+                action: 'PhaseChange',
+                phase: 'WAIT_HUMAN',
+                stateUpdates: {
+                    idleDiscoverCount: 0,
+                    humanGateReason: 'Loop suspended: No ready tasks found after 3 cycles.',
+                },
+            });
+        }
+        else {
+            log(`[IDLE] No ready tasks found (Attempt ${newCount}/3). Transitioning to DISCOVER.`);
+            stream.emit('System', 'system', {
+                action: 'PhaseChange',
+                phase: 'DISCOVER',
+                stateUpdates: {
+                    idleDiscoverCount: newCount,
+                },
+            });
+        }
     }
 }

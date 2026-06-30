@@ -180,6 +180,10 @@ export class TelegramChannel {
     });
   }
 
+  getStatus(): StatusData {
+    return this.status;
+  }
+
   private scheduleUpdate(): void {
     if (this.updateTimer) clearTimeout(this.updateTimer);
     this.updateTimer = setTimeout(() => this.flushStatus(), 2000);
@@ -228,18 +232,19 @@ export class TelegramChannel {
         : 'no files modified';
 
     const phaseLabels: Record<string, string> = {
-      IDLE: '\u{1F7E1} Idle — looking for tasks',
-      PLAN: '\u{1F4DD} Planning — preparing next task',
-      EXEC: '\u2699\uFE0F  Executing — writing code',
-      QA: '\u{1F9EA} Quality Gate — verifying',
-      COMMIT: '\u{1F4BE} Commit — saving to git',
-      SYNC: '\u2601\uFE0F  Sync — updating Notion',
-      FIX: '\u{1F527} Fixing — something went wrong, retrying',
-      DISCOVER: '\u{1F50D} Discovering — looking for bugs/ideas',
-      WAIT_HUMAN: '\u23F3 Waiting for you — see below 👇',
-      THINKING: '\u{1F4AD} Thinking…',
-      STALLED: '\u26A0\uFE0F  Stalled — inactive for too long',
-      CRASHED: '\u{1F6A8} CRASHED — loop failed',
+      IDLE: '🔮 Idle — looking for tasks',
+      PLAN: '📝 Planning — preparing next task',
+      EXEC: '⚙️  Executing — writing code',
+      CODE: '💻 Code — writing code & implementing',
+      QA: '🧪 Quality Gate — verifying',
+      COMMIT: '💾 Commit — saving to git',
+      SYNC: '☁️  Sync — updating Notion',
+      FIX: '🔧 Fixing — something went wrong, retrying',
+      DISCOVER: '🔍 Discovering — looking for bugs/ideas',
+      WAIT_HUMAN: '⏳ Waiting for you — see below 👇',
+      THINKING: '💭 Thinking…',
+      STALLED: '⚠️  Stalled — inactive for too long',
+      CRASHED: '🚨 CRASHED — loop failed',
     };
     const phaseLabel = phaseLabels[s.phase] || `🤖 ${s.phase}`;
 

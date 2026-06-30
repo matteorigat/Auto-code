@@ -8,6 +8,7 @@ import { mountStats } from './components/stats.js';
 import { mountProviders, mountQuotaGauges } from './components/providers.js';
 import { mountUsageCharts } from './components/usage-charts.js';
 import { mountProviderStats } from './components/provider-stats.js';
+import { mountModelRouter } from './components/model-router.js';
 import { mountSessions } from './components/sessions.js';
 import { mountCalls } from './components/calls.js';
 import { mountRouting } from './components/routing.js';
@@ -18,7 +19,7 @@ import { mountTimeline } from './components/timeline.js';
 import { BurnChart, ModelChart } from './charts.js';
 const api = new DashboardAPI();
 const state = new AppState();
-const tabKeys = ['overview', 'logs', 'hitl', 'quotas', 'usage-charts', 'provider-stats', 'explorer'];
+const tabKeys = ['overview', 'logs', 'hitl', 'quotas', 'usage-charts', 'provider-stats', 'model-router', 'explorer'];
 tabKeys.forEach((tab) => {
     const btn = document.getElementById(`tab-btn-${tab}`);
     const pane = document.getElementById(`tab-content-${tab}`);
@@ -56,10 +57,10 @@ state.subscribe((s) => {
         if (s.dailyData)
             burnChart.update(s.dailyData);
     }
-    if (s.activeTab === 'usage-charts' && s.omnirouteUsageAnalytics) {
+    if (s.activeTab === 'usage-charts' && s.modelRouterStats) {
         // handled by mountUsageCharts subscriber
     }
-    if (s.activeTab === 'provider-stats' && s.omnirouteProviderStats) {
+    if (s.activeTab === 'provider-stats' && s.modelRouterStats) {
         // handled by mountProviderStats subscriber
     }
 });
@@ -94,6 +95,7 @@ mountHITL(document.getElementById('hitl-panel-container'), state, api);
 mountTimeline(document.getElementById('loop-state-details'), state);
 mountUsageCharts(document.getElementById('usage-charts-container'), state);
 mountProviderStats(document.getElementById('provider-stats-container'), state);
+mountModelRouter(document.getElementById('model-router-container'), state, api);
 const burnChartCanvas = document.createElement('canvas');
 burnChartCanvas.classList.add('w-full', 'h-full');
 const burnChartWrapper = document.getElementById('burn-chart-container');
@@ -111,7 +113,7 @@ async function fetchSnapshot() {
         try {
             const rp = rangeToParams(state.timeRange);
             const rangeQuery = `?from=${encodeURIComponent(rp.from)}&to=${encodeURIComponent(rp.to)}`;
-            const [summaryRes, bridgeRes, sessionsRes, sysRes, quotaRes, routingRes, sotaRes, dailyRes, logsRes, callsRes, providersMatrixRes, usageAnalyticsRes, providerStatsRes,] = await Promise.all([
+            const [summaryRes, bridgeRes, sessionsRes, sysRes, quotaRes, routingRes, sotaRes, dailyRes, logsRes, callsRes, providersMatrixRes, mrAccountsRes, mrStatsRes, mrModelsRes,] = await Promise.all([
                 api.get(`/summary${rangeQuery}`).catch(() => null),
                 api.get('/bridge-state').catch(() => null),
                 api.get(`/sessions${rangeQuery}`).catch(() => null),
@@ -123,8 +125,9 @@ async function fetchSnapshot() {
                 api.get('/logs?limit=500&type=log').catch(() => null),
                 api.get(`/calls${rangeQuery}`).catch(() => null),
                 api.get('/providers-matrix').catch(() => null),
-                api.get('/omniroute/usage/analytics').catch(() => null),
-                api.get('/omniroute/provider-stats').catch(() => null),
+                api.get('/model-router/accounts').catch(() => null),
+                api.get('/model-router/stats').catch(() => null),
+                api.get('/model-router/models').catch(() => null),
             ]);
             if (summaryRes) {
                 state.summary = summaryRes;
@@ -150,11 +153,14 @@ async function fetchSnapshot() {
             if (providersMatrixRes && !providersMatrixRes.error) {
                 state.providerHealthMatrix = providersMatrixRes;
             }
-            if (usageAnalyticsRes && !usageAnalyticsRes.error) {
-                state.omnirouteUsageAnalytics = usageAnalyticsRes;
+            if (mrAccountsRes && !mrAccountsRes.error) {
+                state.modelRouterAccounts = mrAccountsRes;
             }
-            if (providerStatsRes && !providerStatsRes.error) {
-                state.omnirouteProviderStats = providerStatsRes;
+            if (mrStatsRes && !mrStatsRes.error) {
+                state.modelRouterStats = mrStatsRes;
+            }
+            if (mrModelsRes && !mrModelsRes.error) {
+                state.modelRouterModels = mrModelsRes;
             }
             if (logsRes && logsRes.events) {
                 state.bulkAddEvents(logsRes.events);

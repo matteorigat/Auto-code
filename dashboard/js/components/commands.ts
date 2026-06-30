@@ -121,6 +121,7 @@ export function mountCommands(container, state, api) {
     IDLE:        { cls: 'text-zinc-400 bg-zinc-800/40 border-zinc-700/30', pulse: 'bg-zinc-500', label: 'Idle' },
     PLAN:        { cls: 'text-purple-400 bg-purple-500/10 border-purple-500/20', pulse: 'bg-purple-400 pulse-dot', label: 'Planning' },
     EXEC:        { cls: 'text-blue-400 bg-blue-500/10 border-blue-500/20', pulse: 'bg-blue-400 pulse-dot', label: 'Executing Task' },
+    CODE:        { cls: 'text-blue-400 bg-blue-500/10 border-blue-500/20', pulse: 'bg-blue-400 pulse-dot', label: 'Code Implementation' },
     QA:          { cls: 'text-warning bg-warning/10 border-warning/20', pulse: 'bg-warning pulse-dot', label: 'Quality Gate' },
     VISUAL_QA:   { cls: 'text-pink-400 bg-pink-500/10 border-pink-500/20', pulse: 'bg-pink-400 pulse-dot', label: 'Visual QA' },
     WAIT_HUMAN:  { cls: 'text-amber-400 bg-amber-500/20 border-amber-500/40', pulse: 'bg-amber-400 pulse-dot', label: 'Awaiting Review' },
@@ -310,11 +311,11 @@ export function mountCommands(container, state, api) {
   function renderProcesses() {
     const procs = [
       {
-        id: 'omniroute',
-        name: 'OmniRoute Gateway',
+        id: 'model-router',
+        name: 'Model Router',
         desc: 'AI router & proxy',
         port: '20128',
-        data: state.bridgeState?.omniroute || {},
+        data: state.bridgeState?.['model-router'] || {},
       },
       {
         id: 'opencode',
@@ -474,7 +475,7 @@ export function mountCommands(container, state, api) {
   });
 
   async function execBulk(action) {
-    const procs = ['omniroute', 'opencode'];
+    const procs = ['model-router', 'opencode'];
     const results = await Promise.allSettled(
       procs.map(name => {
         const pData = state.bridgeState?.[name] || {};

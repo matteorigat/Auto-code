@@ -12,7 +12,7 @@ export async function handleCommit(context: OrchestratorContext): Promise<void> 
   const task = tasksArray?.find((t: Record<string, unknown>) => String(t.id) === String(taskId));
   const ws = (task?.workspacePath as string) || projectPath;
 
-  updateStatus({ phase: 'COMMIT', taskTitle: state.get()?.currentStory, taskId });
+  updateStatus({ phase: 'COMMIT', taskTitle: `[${taskId}] Preparing commit...`, taskId });
   log(`[COMMIT] git commit on branch in ${ws}`);
 
   try {
@@ -27,16 +27,29 @@ export async function handleCommit(context: OrchestratorContext): Promise<void> 
   }
 
   try {
-    execFileSync('git', ['add', '-A'], { cwd: ws, timeout: 15000 });
-    execFileSync('git', ['commit', '-m', `feat(${taskId}): ${state.get()?.currentStory}`], {
-      cwd: ws,
-      timeout: 15000,
-    });
-    log(`[COMMIT] Committed feat(${taskId}): ${state.get()?.currentStory} on task branch`);
+    updateStatus({ phase: 'COMMIT', taskTitle: `[${taskId}] Committing code changes: "${state.get()?.currentStory}"...`, taskId });
+
+    // B5: Check if there are actual changes before committing
+    let porcelain = '';
+    try {
+      porcelain = execFileSync('git', ['status', '--porcelain'], { cwd: ws, timeout: 10000 }).toString().trim();
+    } catch (_) {}
+
+    if (!porcelain) {
+      log(`[COMMIT] WARNING: No file changes detected (git status --porcelain is empty). Builder may not have written any files. Skipping commit.`);
+    } else {
+      execFileSync('git', ['add', '-A'], { cwd: ws, timeout: 15000 });
+      execFileSync('git', ['commit', '-m', `feat(${taskId}): ${state.get()?.currentStory}`], {
+        cwd: ws,
+        timeout: 15000,
+      });
+      log(`[COMMIT] Committed feat(${taskId}): ${state.get()?.currentStory} on task branch`);
+    }
   } catch (e: unknown) {
     log(`[COMMIT] Error — git commit on branch failed: ${(e as Error).message}`);
   }
 
+  updateStatus({ phase: 'COMMIT', taskTitle: `[${taskId}] Merging task branch into base branch...`, taskId });
   log(`[COMMIT] merging task branch back to base branch`);
   const merged = taskId ? safety.mergeTaskBranch(taskId, ws) : false;
   if (merged) {

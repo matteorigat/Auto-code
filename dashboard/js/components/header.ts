@@ -1,5 +1,3 @@
-import { escapeHtml } from '../utils/sanitize.js';
-
 const RANGE_OPTIONS = [
   { label: '1m', value: '1m', seconds: 60 },
   { label: '10m', value: '10m', seconds: 600 },
@@ -11,9 +9,15 @@ const RANGE_OPTIONS = [
 ];
 
 function getBarColor(pct) {
+  if (pct === null || pct === undefined) return '#52525b';
   if (pct < 50) return '#10b981';
   if (pct < 80) return '#f59e0b';
   return '#f43f5e';
+}
+
+function getBarGlow(color) {
+  const map = { '#10b981': 'rgba(16,185,129,0.3)', '#f59e0b': 'rgba(245,158,11,0.3)', '#f43f5e': 'rgba(244,63,94,0.3)', '#52525b': 'rgba(82,82,91,0.2)' };
+  return map[color] || 'rgba(139,92,246,0.3)';
 }
 
 function formatBytes(bytes) {
@@ -50,91 +54,96 @@ export function mountHeader(container, state, api, onRefresh, onRangeChange) {
   container.innerHTML = `
     <div class="flex flex-col gap-3">
       <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-            <h1 class="text-2xl font-bold gradient-text tracking-tight flex items-center gap-2">
-              <span>Oracle Control Center</span>
-            </h1>
-            <p class="text-xs text-zinc-400 mt-0.5">Autonomous Agent Fleet Monitoring & Loop Orchestration</p>
+        <div class="flex-shrink-0">
+          <h1 class="text-2xl font-bold gradient-text tracking-tight flex items-center gap-2">
+            <svg class="w-6 h-6 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7" stroke-dasharray="2 4"/><circle cx="12" cy="12" r="11" stroke-dasharray="1 6"/>
+            </svg>
+            Oracle Control Center
+          </h1>
+          <p class="text-xs text-zinc-500 mt-0.5 tracking-wide">Autonomous Agent Fleet Monitoring & Loop Orchestration</p>
         </div>
-        <div class="flex flex-wrap items-center gap-3">
-            <!-- System metrics with progress bars -->
-            <div class="flex items-center gap-4 border-r border-white/5 pr-4 mr-1 hidden sm:flex">
-              <!-- CPU -->
-              <div class="sys-stat">
-                <div class="flex items-center gap-2">
-                  <div class="flex flex-col min-w-[80px]">
-                    <div class="flex items-center justify-between">
-                      <span class="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">CPU</span>
-                      <span id="header-cpu" class="text-xs font-mono font-bold tabular-nums text-zinc-300">--%</span>
-                    </div>
-                    <div class="h-[3px] bg-zinc-800/60 rounded-full mt-1 overflow-hidden">
-                      <div id="header-cpu-bar" class="h-full rounded-full transition-all duration-700 ease-out bar-glow" style="width:0%"></div>
-                    </div>
-                    <span id="header-cpu-detail" class="text-[9px] text-zinc-600 mt-[2px]">--</span>
-                  </div>
-                  <svg id="header-cpu-spark" class="w-10 h-6" viewBox="0 0 50 30" preserveAspectRatio="none">
-                    <path id="header-cpu-spark-path" d="" fill="none" stroke-width="1.5" class="sparkline-path" />
-                  </svg>
-                </div>
-              </div>
-              <!-- RAM -->
-              <div class="sys-stat">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <!-- System metrics cards -->
+          <div class="flex items-stretch gap-2.5 border-r border-white/5 pr-3 mr-0.5 hidden sm:flex">
+            <!-- CPU -->
+            <div class="sys-stat">
+              <div class="flex items-center gap-2.5">
                 <div class="flex flex-col min-w-[90px]">
-                  <div class="flex items-center justify-between">
-                    <span class="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">RAM</span>
-                    <span id="header-ram" class="text-xs font-mono font-bold tabular-nums text-zinc-300">--%</span>
+                  <div class="flex items-center justify-between mb-0.5">
+                    <span class="text-[9px] text-zinc-500 uppercase tracking-widest font-semibold">CPU</span>
+                    <span id="header-cpu" class="text-xs font-mono font-bold tabular-nums text-zinc-200">--%</span>
                   </div>
-                    <div class="h-[3px] bg-zinc-800/60 rounded-full mt-1 overflow-hidden">
-                      <div id="header-ram-bar" class="h-full rounded-full transition-all duration-700 ease-out bar-glow" style="width:0%"></div>
-                    </div>
-                    <span id="header-ram-detail" class="text-[9px] text-zinc-600 mt-[2px]">--</span>
-                </div>
-              </div>
-              <!-- DISK -->
-              <div class="sys-stat">
-                <div class="flex flex-col min-w-[90px]">
-                  <div class="flex items-center justify-between">
-                    <span class="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">DISK</span>
-                    <span id="header-disk" class="text-xs font-mono font-bold tabular-nums text-zinc-300">--%</span>
+                  <div class="h-[5px] bg-zinc-800/70 rounded-full overflow-hidden shadow-inner">
+                    <div id="header-cpu-bar" class="h-full rounded-full transition-all duration-500 ease-out" style="width:0%"></div>
                   </div>
-                    <div class="h-[3px] bg-zinc-800/60 rounded-full mt-1 overflow-hidden">
-                      <div id="header-disk-bar" class="h-full rounded-full transition-all duration-700 ease-out bar-glow" style="width:0%"></div>
-                    </div>
-                    <span id="header-disk-detail" class="text-[9px] text-zinc-600 mt-[2px]">--</span>
-                </div>
-              </div>
-              <!-- Uptime -->
-              <div class="sys-stat min-w-[60px]">
-                <div class="flex flex-col">
-                  <span class="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">UP</span>
-                  <span id="header-uptime" class="text-xs font-mono tabular-nums text-zinc-500 mt-[2px]">--</span>
+                  <div class="flex items-center justify-between mt-0.5">
+                    <span id="header-cpu-detail" class="text-[9px] text-zinc-600">--</span>
+                    <svg id="header-cpu-spark" class="w-9 h-4" viewBox="0 0 50 24" preserveAspectRatio="none">
+                      <path id="header-cpu-spark-path" d="" fill="none" stroke-width="1.5" class="sparkline-path" />
+                    </svg>
+                  </div>
                 </div>
               </div>
             </div>
-            
-            <!-- WS Connection Indicator -->
-            <div id="ws-indicator" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-danger/10 border border-danger/20 text-danger transition-all duration-300" title="WebSocket Status">
-                <div id="ws-indicator-dot" class="w-2 h-2 rounded-full bg-danger"></div>
-                <span id="ws-indicator-text" class="text-xs font-semibold">WS Off</span>
+            <!-- RAM -->
+            <div class="sys-stat">
+              <div class="flex flex-col min-w-[100px]">
+                <div class="flex items-center justify-between mb-0.5">
+                  <span class="text-[9px] text-zinc-500 uppercase tracking-widest font-semibold">RAM</span>
+                  <span id="header-ram" class="text-xs font-mono font-bold tabular-nums text-zinc-200">--%</span>
+                </div>
+                <div class="h-[5px] bg-zinc-800/70 rounded-full overflow-hidden shadow-inner">
+                  <div id="header-ram-bar" class="h-full rounded-full transition-all duration-500 ease-out" style="width:0%"></div>
+                </div>
+                <span id="header-ram-detail" class="text-[9px] text-zinc-600 mt-0.5">--</span>
+              </div>
             </div>
-
-            <!-- Bridge Liveness Indicator -->
-            <div id="bridge-indicator" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400 transition-all duration-300" title="Core Bridge Health">
-                <div id="bridge-indicator-dot" class="w-2 h-2 rounded-full bg-zinc-500"></div>
-                <span id="bridge-indicator-text" class="text-xs font-semibold">Bridge ?</span>
+            <!-- DISK -->
+            <div class="sys-stat">
+              <div class="flex flex-col min-w-[100px]">
+                <div class="flex items-center justify-between mb-0.5">
+                  <span class="text-[9px] text-zinc-500 uppercase tracking-widest font-semibold">DISK</span>
+                  <span id="header-disk" class="text-xs font-mono font-bold tabular-nums text-zinc-200">--%</span>
+                </div>
+                <div class="h-[5px] bg-zinc-800/70 rounded-full overflow-hidden shadow-inner">
+                  <div id="header-disk-bar" class="h-full rounded-full transition-all duration-500 ease-out" style="width:0%"></div>
+                </div>
+                <span id="header-disk-detail" class="text-[9px] text-zinc-600 mt-0.5">--</span>
+              </div>
             </div>
+            <!-- Uptime -->
+            <div class="sys-stat flex items-center pl-1">
+              <div class="flex flex-col">
+                <span class="text-[9px] text-zinc-500 uppercase tracking-widest font-semibold">UP</span>
+                <span id="header-uptime" class="text-xs font-mono tabular-nums text-zinc-400 mt-0.5">--</span>
+              </div>
+            </div>
+          </div>
 
-            <button id="refresh-btn" class="px-4 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition text-xs font-medium border border-white/10 outline-none">
-                Refresh
-            </button>
+          <!-- WS Indicator -->
+          <div id="ws-indicator" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-danger/10 border border-danger/20 text-danger transition-all duration-300" title="WebSocket Status">
+            <div id="ws-indicator-dot" class="w-1.5 h-1.5 rounded-full bg-danger"></div>
+            <span id="ws-indicator-text" class="text-[10px] font-semibold tracking-wide">WS</span>
+          </div>
+
+          <!-- Bridge Indicator -->
+          <div id="bridge-indicator" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-800/60 border border-zinc-700/50 text-zinc-500 transition-all duration-300" title="Core Bridge Health">
+            <div id="bridge-indicator-dot" class="w-1.5 h-1.5 rounded-full bg-zinc-500"></div>
+            <span id="bridge-indicator-text" class="text-[10px] font-semibold tracking-wide">Bridge</span>
+          </div>
+
+          <button id="refresh-btn" class="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 active:bg-white/[0.06] transition-all text-[11px] font-medium border border-white/10 outline-none text-zinc-400 hover:text-zinc-300">
+            Refresh
+          </button>
         </div>
       </div>
-      <div class="flex items-center gap-2">
-        <span class="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mr-1">Range</span>
+      <div class="flex items-center gap-2 border-t border-white/[0.03] pt-2.5">
+        <span class="text-[9px] text-zinc-600 uppercase tracking-widest font-semibold">Range</span>
         <div id="time-range-group" class="flex items-center gap-1">
           ${RANGE_OPTIONS.map(
             (r) => `
-            <button class="range-btn px-3 py-1 rounded-md text-xs font-medium border transition-all duration-150 outline-none ${r.value === '1d' ? 'bg-primary/20 border-primary/40 text-white' : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-zinc-300'}" data-range="${r.value}">
+            <button class="range-btn px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all duration-150 outline-none ${r.value === '1d' ? 'bg-primary/15 border-primary/30 text-white' : 'bg-white/[0.03] border-white/[0.06] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-400'}" data-range="${r.value}">
               ${r.label}
             </button>
           `,
@@ -149,27 +158,10 @@ export function mountHeader(container, state, api, onRefresh, onRangeChange) {
     const s = document.createElement('style');
     s.id = 'header-component-styles';
     s.textContent = `
-      .sparkline-path {
-        stroke: #8b5cf6;
-        transition: d 0.5s ease;
-      }
-      .sys-stat .progress-fill {
-        transition: width 0.7s ease-out, background 0.5s ease;
-      }
-      @keyframes bar-pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.85; }
-      }
-      .sys-stat .bar-live {
-        animation: bar-pulse 2s ease-in-out infinite;
-      }
-      @keyframes glow-pulse {
-        0%, 100% { box-shadow: 0 0 4px rgba(139, 92, 246, 0.15); }
-        50% { box-shadow: 0 0 8px rgba(139, 92, 246, 0.3); }
-      }
-      .sys-stat .bar-glow {
-        animation: glow-pulse 2s ease-in-out infinite;
-      }
+      .sparkline-path { stroke: #8b5cf6; transition: d 0.5s ease; }
+      .sys-stat .progress-fill { transition: width 0.7s ease-out, background 0.5s ease; }
+      @keyframes bar-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.85; } }
+      .sys-stat .bar-live { animation: bar-pulse 2s ease-in-out infinite; }
     `;
     document.head.appendChild(s);
   }
@@ -206,10 +198,10 @@ export function mountHeader(container, state, api, onRefresh, onRangeChange) {
     rangeGroup.querySelectorAll('.range-btn').forEach((b) => {
       if (b === btn) {
         b.className =
-          'range-btn px-3 py-1 rounded-md text-xs font-medium border transition-all duration-150 outline-none bg-primary/20 border-primary/40 text-white';
+          'range-btn px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all duration-150 outline-none bg-primary/15 border-primary/30 text-white';
       } else {
         b.className =
-          'range-btn px-3 py-1 rounded-md text-xs font-medium border transition-all duration-150 outline-none bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-zinc-300';
+          'range-btn px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all duration-150 outline-none bg-white/[0.03] border-white/[0.06] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-400';
       }
     });
     state.timeRange = range;
@@ -218,8 +210,9 @@ export function mountHeader(container, state, api, onRefresh, onRangeChange) {
 
   let isWsConnected = false;
 
-  const updateIndicators = (state) => {
-    const { systemMetrics } = state;
+  const updateIndicators = (s) => {
+    const { systemMetrics } = s;
+
     if (systemMetrics) {
       const cpuVal =
         systemMetrics.cpu !== undefined
@@ -242,80 +235,94 @@ export function mountHeader(container, state, api, onRefresh, onRangeChange) {
 
       // CPU
       if (cpuVal !== null) {
-        const cpuText = `${cpuVal}%`;
-        cpuEl.textContent = cpuText;
-        cpuBar.style.width = `${cpuVal}%`;
-        cpuBar.style.background = `linear-gradient(90deg, ${getBarColor(cpuVal)}, ${getBarColor(Math.min(cpuVal + 10, 100))})`;
+        const color = getBarColor(cpuVal);
+        cpuEl.textContent = `${cpuVal}%`;
+        cpuBar.style.width = `${Math.min(cpuVal, 100)}%`;
+        cpuBar.style.background = `linear-gradient(90deg, ${color}, ${color}dd)`;
+        cpuBar.style.boxShadow = `0 0 8px ${getBarGlow(color)}`;
         const cores = systemMetrics.cpuCores || '';
-        cpuDetail.textContent = cores ? `${cpuVal}% · ${cores} cores` : `${cpuVal}%`;
+        cpuDetail.textContent = cores ? `${cpuVal}% \u00B7 ${cores} cores` : `${cpuVal}%`;
 
-        // Sparkline
         cpuHistory.push(cpuVal);
         if (cpuHistory.length > 30) cpuHistory.shift();
         if (cpuHistory.length >= 2) {
-          sparkPath.setAttribute('d', buildSparkPath(cpuHistory, 50, 30));
-          sparkPath.setAttribute('stroke', getBarColor(cpuVal));
+          sparkPath.setAttribute('d', buildSparkPath(cpuHistory, 50, 24));
+          sparkPath.setAttribute('stroke', color);
         }
+      } else {
+        cpuEl.textContent = '--%';
+        cpuBar.style.width = '0%';
+        cpuDetail.textContent = '--';
       }
 
       // RAM
       if (ramVal !== null) {
+        const color = getBarColor(ramVal);
         ramEl.textContent = `${ramVal}%`;
-        ramBar.style.width = `${ramVal}%`;
-        ramBar.style.background = `linear-gradient(90deg, ${getBarColor(ramVal)}, ${getBarColor(Math.min(ramVal + 10, 100))})`;
+        ramBar.style.width = `${Math.min(ramVal, 100)}%`;
+        ramBar.style.background = `linear-gradient(90deg, ${color}, ${color}dd)`;
+        ramBar.style.boxShadow = `0 0 8px ${getBarGlow(color)}`;
         const used = systemMetrics.ramUsed ? formatBytes(systemMetrics.ramUsed) : '--';
         const total = systemMetrics.ramTotal ? formatBytes(systemMetrics.ramTotal) : '--';
         ramDetail.textContent = `${used} / ${total} GB`;
+      } else {
+        ramEl.textContent = '--%';
+        ramBar.style.width = '0%';
+        ramDetail.textContent = '--';
       }
 
       // DISK
       if (diskVal !== null) {
+        const color = getBarColor(diskVal);
         diskEl.textContent = `${diskVal}%`;
-        diskBar.style.width = `${diskVal}%`;
-        diskBar.style.background = `linear-gradient(90deg, ${getBarColor(diskVal)}, ${getBarColor(Math.min(diskVal + 10, 100))})`;
+        diskBar.style.width = `${Math.min(diskVal, 100)}%`;
+        diskBar.style.background = `linear-gradient(90deg, ${color}, ${color}dd)`;
+        diskBar.style.boxShadow = `0 0 8px ${getBarGlow(color)}`;
         const used = systemMetrics.diskUsed ? `${systemMetrics.diskUsed}G` : '--';
         const total = systemMetrics.diskTotal ? `${systemMetrics.diskTotal}G` : '--';
         diskDetail.textContent = `${used} / ${total}`;
+      } else {
+        diskEl.textContent = '--%';
+        diskBar.style.width = '0%';
+        diskDetail.textContent = '--';
       }
 
       // Uptime
       uptimeEl.textContent = systemMetrics.uptime ? formatUptime(systemMetrics.uptime) : '--';
     }
 
-    // WebSocket Indicator
+    // WS Indicator
     if (isWsConnected) {
       wsIndicator.className =
-        'flex items-center gap-2 px-3 py-1.5 rounded-full bg-success/10 border border-success/20 text-success transition-all duration-300';
-      wsDot.className = 'w-2 h-2 rounded-full bg-success pulse-dot';
-      wsText.textContent = 'WS Live';
+        'flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-success/10 border border-success/20 text-success transition-all duration-300';
+      wsDot.className = 'w-1.5 h-1.5 rounded-full bg-success pulse-dot';
+      wsText.textContent = 'WS';
     } else {
       wsIndicator.className =
-        'flex items-center gap-2 px-3 py-1.5 rounded-full bg-danger/10 border border-danger/20 text-danger transition-all duration-300';
-      wsDot.className = 'w-2 h-2 rounded-full bg-danger';
-      wsText.textContent = 'WS Off';
+        'flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-danger/10 border border-danger/20 text-danger transition-all duration-300';
+      wsDot.className = 'w-1.5 h-1.5 rounded-full bg-danger';
+      wsText.textContent = 'WS';
     }
 
-    // Bridge Liveness Indicator
-    const processes = state.bridgeState;
+    // Bridge Indicator
+    const processes = s.bridgeState;
     const isLoopRunning =
       processes?.loop?.running || (processes?.loop?.phase && processes.loop.phase !== 'IDLE');
     const isOpencodeRunning = processes?.opencode?.running;
-    const isOmniRouteRunning = processes?.omniroute?.running;
-    const isBridgeOnline = isOpencodeRunning || isOmniRouteRunning || isLoopRunning;
-    const hasOrHealth = !!(state.summary?.omniroute);
+    const isModelRouterRunning = processes?.['model-router']?.running;
+    const isBridgeOnline = isOpencodeRunning || isModelRouterRunning || isLoopRunning;
 
     if (isBridgeOnline) {
       bridgeIndicator.className =
-        'flex items-center gap-2 px-3 py-1.5 rounded-full bg-accentBlue/10 border border-accentBlue/20 text-accentBlue transition-all duration-300';
-      bridgeDot.className = 'w-2 h-2 rounded-full bg-accentBlue pulse-dot';
-      const orUptime = state.summary?.omniroute?.uptime;
-      const uptimeStr = orUptime ? `${Math.floor(orUptime)}s` : '';
-      bridgeText.textContent = `Bridge On${uptimeStr ? ` · OR ${uptimeStr}` : ''}`;
+        'flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accentBlue/10 border border-accentBlue/20 text-accentBlue transition-all duration-300';
+      bridgeDot.className = 'w-1.5 h-1.5 rounded-full bg-accentBlue pulse-dot';
+      const mrUptime = s.summary?.['model-router']?.uptime;
+      bridgeText.textContent = `Bridge${mrUptime ? ` \u00B7 ${Math.floor(mrUptime)}s` : ''}`;
     } else {
       bridgeIndicator.className =
-        'flex items-center gap-2 px-3 py-1.5 rounded-full bg-danger/10 border border-danger/20 text-danger transition-all duration-300';
-      bridgeDot.className = 'w-2 h-2 rounded-full bg-danger';
-      bridgeText.textContent = `Bridge Off`;
+        'flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-800/60 border border-zinc-700/50 text-zinc-500 transition-all duration-300';
+      bridgeDot.className = 'w-1.5 h-1.5 rounded-full bg-zinc-500';
+      bridgeText.textContent = 'Bridge';
     }
   };
 

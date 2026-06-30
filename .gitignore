@@ -43,3 +43,9 @@ archive/
 *.corrupted
 scratch_*.mjs
 scratch_*.js
+.tmp/
+
+
+
+
+omniroute/

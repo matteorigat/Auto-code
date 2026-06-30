@@ -23,7 +23,7 @@ export async function handleQa(context: OrchestratorContext): Promise<void> {
     if (!task) continue;
 
     const ws = (task.workspacePath as string) || projectPath;
-    updateStatus({ phase: 'QA', taskTitle: task.title, taskId: task.id });
+    updateStatus({ phase: 'QA', taskTitle: `[${task.id}] Preparing QA validations...`, taskId: task.id });
 
     state.transition('QA', {
       currentTaskId: task.id,
@@ -40,6 +40,7 @@ export async function handleQa(context: OrchestratorContext): Promise<void> {
       log(`[QA] Failed to clean up swarm-consensus.md: ${(e as Error).message}`);
     }
 
+    updateStatus({ phase: 'QA', taskTitle: `[${task.id}] Running static analysis & tests inside Docker sandbox...`, taskId: task.id });
     log(`[QA] Running gates for ${taskId} inside Docker sandbox`);
 
     const qa = await gate.run({ cwd: ws, taskId: task.id as string });
@@ -48,6 +49,14 @@ export async function handleQa(context: OrchestratorContext): Promise<void> {
       log(`[QA] ${taskId} PASSED`);
     } else {
       log(`[QA] ${taskId} FAILED`);
+
+      // F2: Reject LLM self-certification — reset passes=false if builder set it prematurely.
+      // The QA gate is the authoritative source of truth, not the LLM.
+      if (task.passes === true) {
+        task.passes = false;
+        log(`[QA] F2: Reset passes=false for ${taskId} — QA failed, LLM self-cert rejected.`);
+      }
+
       const reflectionCount = (currentState as Record<string, number>).reflectionCount || 0;
       stream.emit('System', 'system', {
         action: 'PhaseChange',
@@ -55,8 +64,8 @@ export async function handleQa(context: OrchestratorContext): Promise<void> {
         stateUpdates: {
           previousError: qa.results
             .filter((r: { passed: boolean }) => !r.passed)
-            .map((r: { output: string }) => r.output)
-            .join('\n'),
+            .map((r: { name: string; output: string }) => `[${r.name}]\n${r.output}`)
+            .join('\n---\n'),
           fixTaskId: taskId,
           reflectionCount: reflectionCount + 1,
         },

@@ -10,9 +10,9 @@
 
 providers:
 
-  # ─── OpenCode Zen ───
-  # Observed: ~200 requests per 5-6h, no published RPM/RPD
-  opencode_zen:
+  # ─── OpenCode Free (no auth, multiple slots for rotation) ───
+  # https://opencode.ai/zen/v1 — no API key required
+  opencode_free:
     type: shared
     rpm: null
     rph: 200

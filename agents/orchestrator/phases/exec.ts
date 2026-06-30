@@ -9,7 +9,7 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export async function handleExec(context: OrchestratorContext): Promise<void> {
   const { tasks, stream, log, updateStatus, projectPath, state, safety } = context;
 
-  log(`[EXEC] Running EXEC phase...`);
+  log(`[CODE] Running CODE phase...`);
   const currentState = state.get() || ({} as Record<string, unknown>);
   const execTaskIds = ((currentState as Record<string, unknown[]>).execTaskIds || []) as string[];
 
@@ -34,13 +34,13 @@ export async function handleExec(context: OrchestratorContext): Promise<void> {
       console.error('Ignored error:', (e as Error).message);
     }
     if (!dockerAvailable) {
-      log(`[EXEC] Docker unavailable. Falling back to sequential mode.`);
+      log(`[CODE] Docker unavailable. Falling back to sequential mode.`);
       mode = 'sequential';
     }
   }
 
   log(
-    `[EXEC] Running builder for tasks: ${tasksToRun.map((t: Record<string, unknown>) => t.id).join(', ')} (${mode})`,
+    `[CODE] Running builder for tasks: ${tasksToRun.map((t: Record<string, unknown>) => t.id).join(', ')} (${mode})`,
   );
 
   interface TaskResult {
@@ -52,17 +52,18 @@ export async function handleExec(context: OrchestratorContext): Promise<void> {
   const runTask = (task: Record<string, unknown>): Promise<TaskResult> => {
     return new Promise<TaskResult>((resolve) => {
       const ws = (task.workspacePath as string) || projectPath;
-      updateStatus({ phase: 'EXEC', taskTitle: task.title, taskId: task.id });
+      updateStatus({ phase: 'CODE', taskTitle: `[${task.id}] Spawning isolated build worker process...`, taskId: task.id });
 
-      state.transition('EXEC', {
+      state.transition('CODE', {
         currentTaskId: task.id,
         currentStory: task.title,
       });
 
-      log(`[EXEC] [${task.id}] — Starting Isolated Worker Process`);
+      updateStatus({ phase: 'CODE', taskTitle: `[${task.id}] Implementing code changes: "${task.title}"...`, taskId: task.id });
+      log(`[CODE] [${task.id}] — Starting Isolated Worker Process`);
 
       const tierSelector = new TierSelector();
-      const tier = tierSelector.select('EXEC');
+      const tier = tierSelector.select('CODE');
       tierSelector.applyTierConfig(tier, ws);
 
       const workerPath = join(__dirname, '../../workers/builder-worker.js');
@@ -115,7 +116,7 @@ export async function handleExec(context: OrchestratorContext): Promise<void> {
     const failed = results.filter((r: TaskResult) => !r.success);
 
     if (failed.length > 0) {
-      log(`[EXEC] ${failed.length} tasks failed in parallel mode.`);
+      log(`[CODE] ${failed.length} tasks failed in parallel mode.`);
       stream.emit('System', 'system', { action: 'PhaseChange', phase: 'IDLE' });
     } else {
       stream.emit('System', 'system', {

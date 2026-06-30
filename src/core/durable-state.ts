@@ -49,6 +49,9 @@ export interface LoopState {
   updatedAt: string;
   costAccumulatorUsd: number;
   storiesCompletedToday: number;
+  discoverCount?: number;
+  idleDiscoverCount?: number;
+  resumeTarget?: string | null;
 }
 
 export class DurableStateManager {

@@ -47,7 +47,7 @@ export function createLogsRouter({ telemetryStore }) {
         telemetryStore.ingest({
             type: 'model.call',
             level: 'info',
-            source: 'omniroute',
+            source: 'model-router',
             message: `${req.body.provider}/${req.body.modelId}`,
             data: req.body,
         });

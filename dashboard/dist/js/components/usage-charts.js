@@ -151,11 +151,43 @@ export function mountUsageCharts(container, state) {
     const update = () => {
         if (state.activeTab !== 'usage-charts')
             return;
-        const data = state.omnirouteUsageAnalytics;
-        if (!data) {
-            container.innerHTML = '<div class="text-zinc-500 text-xs py-8 text-center">Waiting for OmniRoute usage data...</div>';
+        const stats = state.modelRouterStats;
+        if (!stats) {
+            container.innerHTML = '<div class="text-zinc-500 text-xs py-8 text-center">Waiting for Model Router usage data...</div>';
             return;
         }
+        // Transform model-router stats into usage-charts format
+        const byProvider = Object.entries(stats.byTier || {}).map(([key, val]) => ({
+            provider: key,
+            requests: val.calls || 0,
+            successRatePct: 100,
+            avgLatencyMs: 0,
+            totalTokens: (val.tokensIn || 0) + (val.tokensOut || 0),
+        }));
+        const byModel = Object.entries(stats.perModel || {}).map(([key, val]) => ({
+            model: key,
+            provider: 'model-router',
+            requests: val.calls || 0,
+            successRatePct: val.calls > 0 ? ((val.calls - (val.failures || 0)) / val.calls) * 100 : 100,
+            avgLatencyMs: 0,
+            totalTokens: (val.tokensIn || 0) + (val.tokensOut || 0),
+        }));
+        const data = {
+            summary: {
+                totalRequests: stats.totalRequests || 0,
+                successRatePct: stats.totalRequests > 0 ? ((stats.totalRequests - stats.totalFailures) / stats.totalRequests) * 100 : 100,
+                avgLatencyMs: stats.recent5m?.avgLatencyMs || 0,
+                totalTokens: 0,
+                promptTokens: 0,
+                completionTokens: 0,
+                uniqueModels: byModel.length,
+                uniqueAccounts: stats.byTier?.opencodeFree?.calls || 0,
+            },
+            byProvider,
+            byModel,
+            dailyTrend: [],
+            weeklyCounts: [],
+        };
         renderKPIs(data);
         renderTables(data);
         renderCharts(data);

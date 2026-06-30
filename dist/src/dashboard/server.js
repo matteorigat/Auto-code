@@ -1,6 +1,5 @@
 import express from 'express';
 import * as os from 'node:os';
-import { readFileSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { MetricsCollector } from './collector.js';
@@ -13,7 +12,6 @@ import { createLogsRouter } from './routes/logs.js';
 import { createCommandsRouter } from './routes/commands.js';
 import { createSettingsRouter } from './routes/settings.js';
 import { createStaticRouter } from './routes/static.js';
-import { createOmniRouteProxyRouter } from './routes/omniroute-proxy.js';
 import config from '../config/index.js';
 const execFileAsync = promisify(execFile);
 export class DashboardServer {
@@ -76,7 +74,6 @@ export class DashboardServer {
         this.app.use('/api', createLogsRouter(deps));
         this.app.use('/api', createCommandsRouter({ ...deps, systemController: this.systemController }));
         this.app.use('/api', createSettingsRouter(deps));
-        this.app.use('/api/omniroute', createOmniRouteProxyRouter(deps));
     }
     _setupErrorHandler() {
         this.app.use((err, req, res, _next) => {
@@ -101,31 +98,52 @@ export class DashboardServer {
         setInterval(() => this.collector.snapshotSessions(), 900_000);
         this._sysInfoInterval = setInterval(() => this._broadcastSysInfo(), 3000);
     }
+    _cpuTimes() {
+        const cpus = os.cpus();
+        let total = 0;
+        let idle = 0;
+        for (const cpu of cpus) {
+            total += cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq;
+            idle += cpu.times.idle;
+        }
+        return { total, idle };
+    }
+    async _getDiskUsage() {
+        try {
+            const isMac = process.platform === 'darwin';
+            const args = isMac ? ['-g', '/'] : ['-BG', '/'];
+            const { stdout } = await execFileAsync('df', args, {
+                encoding: 'utf-8',
+                timeout: 2000,
+            });
+            const lines = stdout.trim().split('\n');
+            const parts = lines[lines.length - 1]?.split(/\s+/);
+            if (parts && parts.length >= 5) {
+                return {
+                    total: parseInt(parts[1]),
+                    used: parseInt(parts[2]),
+                    pct: parseFloat(parts[4]),
+                };
+            }
+        }
+        catch {
+            // df command might timeout or fail
+        }
+        return null;
+    }
     async _broadcastSysInfo() {
         try {
             let cpu = 0;
             try {
-                const stat1 = readFileSync('/proc/stat', 'utf-8');
-                const cpu1 = stat1.split('\n').find((l) => l.startsWith('cpu '));
-                if (cpu1) {
-                    const p1 = cpu1.trim().split(/\s+/).slice(1).map(Number);
-                    const tot1 = p1.reduce((a, b) => a + b, 0);
-                    const idle1 = p1[3];
-                    await new Promise((r) => setTimeout(r, 100));
-                    const stat2 = readFileSync('/proc/stat', 'utf-8');
-                    const cpu2 = stat2.split('\n').find((l) => l.startsWith('cpu '));
-                    if (cpu2) {
-                        const p2 = cpu2.trim().split(/\s+/).slice(1).map(Number);
-                        const tot2 = p2.reduce((a, b) => a + b, 0);
-                        const idle2 = p2[3];
-                        const td = tot2 - tot1;
-                        const id = idle2 - idle1;
-                        cpu = td > 0 ? parseFloat((((td - id) / td) * 100).toFixed(1)) : 0;
-                    }
-                }
+                const { total: tot1, idle: idle1 } = this._cpuTimes();
+                await new Promise((r) => setTimeout(r, 100));
+                const { total: tot2, idle: idle2 } = this._cpuTimes();
+                const td = tot2 - tot1;
+                const id = idle2 - idle1;
+                cpu = td > 0 ? parseFloat((((td - id) / td) * 100).toFixed(1)) : 0;
             }
             catch {
-                // /proc/stat parsing can fail on some systems
+                // CPU measurement can fail on some systems
             }
             const totalMem = os.totalmem();
             const freeMem = os.freemem();
@@ -133,22 +151,12 @@ export class DashboardServer {
             const ramPct = parseFloat(((ramUsed / totalMem) * 100).toFixed(1));
             const now = Date.now();
             if (!this._lastDiskCheck || now - this._lastDiskCheck >= 60000) {
-                try {
-                    const { stdout } = await execFileAsync('df', ['-BG', '/'], {
-                        encoding: 'utf-8',
-                        timeout: 2000,
-                    });
-                    const lines = stdout.trim().split('\n');
-                    const parts = lines[lines.length - 1]?.split(/\s+/);
-                    if (parts) {
-                        this._lastDiskTotal = parseInt(parts[1]);
-                        this._lastDiskUsed = parseInt(parts[2]);
-                        this._lastDiskPct = parseFloat(parts[4]);
-                        this._lastDiskCheck = now;
-                    }
-                }
-                catch {
-                    // df command might timeout or fail
+                const disk = await this._getDiskUsage();
+                if (disk) {
+                    this._lastDiskTotal = disk.total;
+                    this._lastDiskUsed = disk.used;
+                    this._lastDiskPct = disk.pct;
+                    this._lastDiskCheck = now;
                 }
             }
             this.telemetryStore.ingest({

@@ -1,25 +1,6 @@
 import { Router } from 'express';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-const OR_API_KEY = () => process.env.OMNIROUTE_API_KEY || process.env.API_KEY_SECRET || '';
-async function fetchOmniRoute(path, params) {
-    const apiKey = OR_API_KEY();
-    if (!apiKey)
-        return null;
-    try {
-        const query = params ? '?' + new URLSearchParams(params).toString() : '';
-        const res = await fetch(`http://127.0.0.1:20128${path}${query}`, {
-            headers: { Authorization: `Bearer ${apiKey}` },
-            signal: AbortSignal.timeout(5000),
-        });
-        if (!res.ok)
-            return null;
-        return (await res.json());
-    }
-    catch {
-        return null;
-    }
-}
 export function createMetricsRouter({ collector, config }) {
     const router = Router();
     const DASHBOARD_DIR = join(process.cwd(), 'dashboard');
@@ -64,8 +45,6 @@ export function createMetricsRouter({ collector, config }) {
             const todayDate = new Date().toISOString().substring(0, 10);
             const today = collector.get(`SELECT SUM(calls) as total_calls, SUM(cost) as total_cost FROM daily_agg WHERE date = ?`, [todayDate]);
             const errors = collector.get(`SELECT SUM(errors) as total_errors FROM daily_agg ${df.clause}`, df.vals);
-            const telemetry = await fetchOmniRoute('/api/telemetry/summary', { windowMs: '86400000' });
-            const analytics = await fetchOmniRoute('/api/usage/analytics', { windowMs: '86400000' });
             res.json({
                 totalCalls: overall?.total_calls || 0,
                 totalCost: overall?.total_cost || 0,
@@ -75,23 +54,6 @@ export function createMetricsRouter({ collector, config }) {
                 todayCost: today?.total_cost || 0,
                 totalErrors: errors?.total_errors || 0,
                 byModel: daily || [],
-                omniroute: telemetry
-                    ? {
-                        avgLatencyMs: telemetry.avgLatencyMs,
-                        errorRate: telemetry.errorRate,
-                        uptime: telemetry.uptime,
-                        memoryUsage: telemetry.memoryUsage,
-                        activeConnections: telemetry.activeConnections,
-                        sessions: telemetry.sessions,
-                        latency: {
-                            p50: telemetry.p50,
-                            p95: telemetry.p95,
-                            p99: telemetry.p99,
-                            avg: telemetry.avg,
-                        },
-                        phaseBreakdown: telemetry.phaseBreakdown,
-                    }
-                    : null,
             });
         }
         catch (e) {
@@ -102,14 +64,8 @@ export function createMetricsRouter({ collector, config }) {
         try {
             const df = dateFilter(req.query);
             const data = collector.query(`SELECT date, provider, model, calls, input_tokens, output_tokens, total_tokens, cost, errors FROM daily_agg ${df.clause} ORDER BY date DESC, calls DESC LIMIT 500`, df.vals);
-            let orDaily = null;
-            const orHistory = await fetchOmniRoute('/api/usage/history');
-            if (orHistory && Array.isArray(orHistory)) {
-                orDaily = orHistory;
-            }
             res.json({
                 local: data,
-                omniroute: orDaily,
             });
         }
         catch (e) {

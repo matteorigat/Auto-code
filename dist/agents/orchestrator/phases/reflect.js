@@ -9,9 +9,10 @@ export async function handleReflect(context) {
     const tasksArray = tasks._tasks;
     const task = tasksArray?.find((t) => String(t.id) === String(taskId));
     const ws = task?.workspacePath || projectPath;
-    updateStatus({ phase: 'REFLECT', taskTitle: state.get()?.currentStory, taskId });
+    updateStatus({ phase: 'REFLECT', taskTitle: `[${taskId}] Preparing retrospective analysis...`, taskId });
     log('[REFLECT] extracting reusable skills');
     try {
+        updateStatus({ phase: 'REFLECT', taskTitle: `[${taskId}] Extracting git changes diff...`, taskId });
         const diff = execFileSync('git', ['diff', 'HEAD~1', 'HEAD'], {
             cwd: ws,
             timeout: 10000,
@@ -20,6 +21,7 @@ export async function handleReflect(context) {
             log('[REFLECT] no diff found, skipping');
         }
         else {
+            updateStatus({ phase: 'REFLECT', taskTitle: `[${taskId}] Mining reusable skills with skill-extractor...`, taskId });
             const tierSelector = new TierSelector();
             const tier = tierSelector.select('REFLECT');
             tierSelector.applyTierConfig(tier, projectPath);
@@ -57,6 +59,35 @@ export async function handleReflect(context) {
     }
     catch (err) {
         log(`[REFLECT] error (non-fatal): ${err.message}`);
+    }
+    if (task && task._projectSlug) {
+        updateStatus({ phase: 'REFLECT', taskTitle: `Checking completion status for ${task._projectSlug}...`, taskId });
+        try {
+            const rootPrd = tasks.readPRD();
+            const projectEntry = (rootPrd.projects || []).find((p) => p.slug === task._projectSlug);
+            if (projectEntry) {
+                const stories = (projectEntry.stories || []);
+                const allStoriesCompleted = stories.length > 0 &&
+                    stories.every((s) => s.passes || s.status === 'completed');
+                if (allStoriesCompleted) {
+                    log(`[REFLECT] All stories completed for project ${task._projectSlug}.`);
+                    log(`[REFLECT] The project is already state-of-the-art in every part and no new feature can be implemented.`);
+                    log(`[REFLECT] Transitioning to COMPLETED state and exiting loop.`);
+                    projectEntry.completed = true;
+                    tasks.writePRD(rootPrd);
+                    stream.emit('System', 'system', {
+                        action: 'PhaseChange',
+                        phase: 'DONE',
+                        stateUpdates: { currentTaskId: null, currentStory: null },
+                    });
+                    setTimeout(() => process.exit(0), 1000);
+                    return;
+                }
+            }
+        }
+        catch (err) {
+            log(`[REFLECT] Error verifying project completion status: ${err.message}`);
+        }
     }
     stream.emit('System', 'system', {
         action: 'PhaseChange',

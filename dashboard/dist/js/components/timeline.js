@@ -1,8 +1,9 @@
 import { escapeHtml as sanitize } from '../utils/sanitize.js';
 const PHASES = {
-    IDLE: { cls: 'text-zinc-400 bg-zinc-800/40 border-zinc-700/30', pulse: 'bg-zinc-500', label: 'Autopilot Idle', ico: '🟡' },
+    IDLE: { cls: 'text-zinc-400 bg-zinc-800/40 border-zinc-700/30', pulse: 'bg-zinc-500', label: 'Autopilot Idle', ico: '🔮' },
     DISCOVER: { cls: 'text-sky-400 bg-sky-500/10 border-sky-500/20', pulse: 'bg-sky-400 pulse-dot', label: 'Discovering Context', ico: '🔍' },
     PLAN: { cls: 'text-purple-400 bg-purple-500/10 border-purple-500/20', pulse: 'bg-purple-400 pulse-dot', label: 'Synthesizing Plan', ico: '📝' },
+    CODE: { cls: 'text-blue-400 bg-blue-500/10 border-blue-500/20', pulse: 'bg-blue-400 pulse-dot', label: 'Code Implementation', ico: '💻' },
     EXEC: { cls: 'text-blue-400 bg-blue-500/10 border-blue-500/20', pulse: 'bg-blue-400 pulse-dot', label: 'Executing Task', ico: '⚙️' },
     QA: { cls: 'text-warning bg-warning/10 border-warning/20', pulse: 'bg-warning pulse-dot', label: 'Running Quality Gate', ico: '🧪' },
     VISUAL_QA: { cls: 'text-pink-400 bg-pink-500/10 border-pink-500/20', pulse: 'bg-pink-400 pulse-dot', label: 'Visual QA', ico: '🎨' },
@@ -12,6 +13,27 @@ const PHASES = {
     FIX: { cls: 'text-danger bg-danger/10 border-danger/20', pulse: 'bg-danger pulse-dot', label: 'Self-Repairing', ico: '🔧' },
     THINKING: { cls: 'text-primary bg-primary/10 border-primary/20', pulse: 'bg-primary pulse-dot', label: 'Thinking...', ico: '💭' },
 };
+const PIPELINE_STEPS = [
+    { key: 'DISCOVER', label: 'Discover', ico: '🔍', colorClass: 'border-sky-500/20 text-sky-400/60', activeClass: 'border-sky-400 bg-sky-500/10 text-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.15)] font-bold' },
+    { key: 'IDLE', label: 'Idle', ico: '🔮', colorClass: 'border-zinc-700/20 text-zinc-500', activeClass: 'border-purple-400 bg-purple-500/10 text-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.15)] font-bold' },
+    { key: 'PLAN', label: 'Plan', ico: '📝', colorClass: 'border-purple-500/20 text-purple-400/60', activeClass: 'border-purple-400 bg-purple-500/10 text-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.15)] font-bold' },
+    { key: 'CODE', label: 'Code', ico: '💻', colorClass: 'border-blue-500/20 text-blue-400/60', activeClass: 'border-blue-400 bg-blue-500/10 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)] font-bold' },
+    { key: 'QA', label: 'QA', ico: '🧪', colorClass: 'border-amber-500/20 text-amber-400/60', activeClass: 'border-amber-400 bg-amber-500/10 text-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.15)] font-bold' },
+    { key: 'COMMIT', label: 'Commit', ico: '💾', colorClass: 'border-emerald-500/20 text-emerald-400/60', activeClass: 'border-emerald-400 bg-emerald-500/10 text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.15)] font-bold' },
+    { key: 'REFLECT', label: 'Reflect', ico: '🧠', colorClass: 'border-pink-500/20 text-pink-400/60', activeClass: 'border-pink-400 bg-pink-500/10 text-pink-400 shadow-[0_0_8px_rgba(236,72,153,0.15)] font-bold' },
+];
+function getMappedPipelinePhase(p) {
+    if (!p)
+        return 'IDLE';
+    const upper = p.toUpperCase();
+    if (upper === 'EXEC' || upper === 'FIX')
+        return 'CODE';
+    if (upper === 'VISUAL_QA')
+        return 'QA';
+    if (upper === 'SYNC')
+        return 'COMMIT';
+    return upper;
+}
 function getPhaseCfg(p) {
     if (!p || p === 'IDLE')
         return PHASES.IDLE;
@@ -41,8 +63,14 @@ function fmtToken(n) {
 export function mountTimeline(container, state) {
     container.innerHTML = `
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-      <!-- Left -->
-      <div class="lg:col-span-7 space-y-3.5">
+      <!-- Left: Run Details -->
+      <div class="lg:col-span-7 space-y-4">
+        <!-- Loop Phase Cycle Pipeline Tracker -->
+        <div class="bg-white/[0.01] border border-white/5 rounded-xl p-4 space-y-3">
+          <span class="text-zinc-500 font-bold uppercase tracking-wider text-[9px] block">Execution Pipeline</span>
+          <div class="grid grid-cols-7 gap-1 md:gap-1.5" id="pipeline-tracker"></div>
+        </div>
+
         <div class="flex items-center justify-between p-3.5 bg-white/[0.01] border border-white/5 rounded-xl">
           <div class="flex flex-col gap-1">
             <span class="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">Orchestrator Phase</span>
@@ -116,7 +144,7 @@ export function mountTimeline(container, state) {
           <h4 class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Activity Timeline</h4>
           <span id="timeline-count" class="text-[9px] text-zinc-600 font-mono"></span>
         </div>
-        <div class="flex-1 relative pl-5 border-l border-white/[0.06] space-y-0 max-h-[360px] overflow-y-auto custom-scrollbar" id="timeline-list">
+        <div class="flex-1 relative pl-5 border-l border-white/[0.06] space-y-0 max-h-[460px] overflow-y-auto custom-scrollbar" id="timeline-list">
           <div class="text-zinc-600 text-xs py-3 select-none font-medium">No phase history logged</div>
         </div>
       </div>
@@ -180,8 +208,32 @@ export function mountTimeline(container, state) {
             els.heartbeatEl.className = 'text-zinc-500 font-medium text-xs mt-0.5 flex items-center gap-1.5';
             els.heartbeatEl.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-zinc-600"></span>Offline';
         }
-        els.projectEl.textContent = loop.project || '—';
-        els.projectEl.className = (loop.project && loop.project !== '—' ? 'text-accentBlue' : 'text-zinc-500') + ' font-bold truncate mt-0.5';
+        // Dynamic Pipeline Tracker Update
+        const activeKey = getMappedPipelinePhase(phase);
+        const trackerEl = container.querySelector('#pipeline-tracker');
+        if (trackerEl) {
+            trackerEl.innerHTML = PIPELINE_STEPS.map((step) => {
+                const isActive = step.key === activeKey;
+                const currentClass = isActive ? step.activeClass : `${step.colorClass} opacity-30 hover:opacity-50`;
+                const pulseDot = isActive ? `<span class="w-1 h-1 rounded-full bg-current animate-pulse shrink-0"></span>` : '';
+                return `
+          <div class="flex flex-col items-center justify-center p-1.5 md:p-2 rounded-lg border ${currentClass} transition-all duration-300 gap-0.5 text-center select-none">
+            <span class="text-xs select-none leading-none">${step.ico}</span>
+            <span class="text-[8px] uppercase font-bold tracking-wider truncate max-w-full">${step.label}</span>
+            ${pulseDot}
+          </div>
+        `;
+            }).join('');
+        }
+        // Project presentation
+        if (loop.project && loop.project !== '—') {
+            els.projectEl.innerHTML = `<span class="inline-flex items-center gap-1.5">📂 ${sanitize(loop.project)}</span>`;
+            els.projectEl.className = 'text-accentBlue font-bold truncate mt-0.5';
+        }
+        else {
+            els.projectEl.textContent = '—';
+            els.projectEl.className = 'text-zinc-500 font-bold truncate mt-0.5';
+        }
         els.costEl.textContent = `$${(loop.cost || 0).toFixed(2)}`;
         els.tokensEl.textContent = fmtToken(loop.tokens || 0);
         els.taskTitleEl.textContent = loop.taskTitle || 'Waiting for active tasks in loop...';
@@ -252,7 +304,7 @@ export function mountTimeline(container, state) {
             const d = new Date(e.ts);
             const time = d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
             const dotCls = isError ? 'bg-danger pulse-dot' : isLatest ? 'bg-primary pulse-dot' : cfg.pulse || 'bg-zinc-600';
-            return `<div class="tl-item ${isLatest ? 'active opacity-100' : 'opacity-40 hover:opacity-80'} flex items-center justify-between text-[11px] py-1.5 transition-all duration-300 origin-left" style="${isLatest ? '' : ''}">
+            return `<div class="tl-item ${isLatest ? 'active opacity-100' : 'opacity-40 hover:opacity-80'} flex items-center justify-between text-[11px] py-1.5 transition-all duration-300 origin-left">
         <div class="flex items-center gap-2.5 min-w-0 flex-1">
           <span class="w-2 h-2 rounded-full ${dotCls} border border-white/10 shrink-0"></span>
           <span class="text-zinc-500 font-mono select-none shrink-0 w-[60px]">${time}</span>
