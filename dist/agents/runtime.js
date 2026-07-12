@@ -9,7 +9,8 @@ import { buildPrompt } from './runtime/prompt.js';
 import { SSEReader } from './runtime/sse.js';
 const telemetry = new TelemetryClient();
 const DEFAULT_TIMEOUT_MS = 900_000;
-const STAGNATION_THRESHOLD = 3;
+const STAGNATION_THRESHOLD = 5; // B10: increased from 3 to reduce false positives
+const RATE_LIMIT_BACKOFFS_MS = [15_000, 30_000, 60_000, 120_000]; // exponential backoff steps
 export class AgentRuntime extends EventEmitter {
     projectPath;
     agentType;
@@ -465,15 +466,19 @@ export class AgentRuntime extends EventEmitter {
             msgLower.includes('rate limit') ||
             msgLower.includes('too many requests');
         if (isRateLimit) {
+            // B10: Use exponential backoff for rate limits instead of a flat 60s sleep
+            const rateLimitKey = '_rateLimitCount';
+            const prevCount = this[rateLimitKey] || 0;
+            const backoffMs = RATE_LIMIT_BACKOFFS_MS[Math.min(prevCount, RATE_LIMIT_BACKOFFS_MS.length - 1)];
+            this[rateLimitKey] = prevCount + 1;
             telemetry.emit('agent.error', 'agent', msg, {
                 level: 'error',
-                data: { type: 'rate_limit' },
+                data: { type: 'rate_limit', attempt: prevCount + 1, backoffMs },
                 sessionId: this.sessionId,
             });
-            logErr(this.projectPath, 'rate-limit', new QuotaExceededError(`Rate limit detected via SSE: ${msg}. Sleeping 60s to protect bucket...`));
-            await new Promise((r) => setTimeout(r, 60000));
-            this._cleanup();
-            this.emit('runtimeError', new QuotaExceededError(`RATE_LIMIT: ${msg}`));
+            logErr(this.projectPath, 'rate-limit', new QuotaExceededError(`Rate limit hit (attempt ${prevCount + 1}). Sleeping ${backoffMs / 1000}s before retry...`));
+            await new Promise((r) => setTimeout(r, backoffMs));
+            // Don't abort — let the session continue after the backoff
             return;
         }
         const err = new AgentStagnationError(`Stagnation/Retry: ${msg}`);

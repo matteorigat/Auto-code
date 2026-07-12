@@ -48,6 +48,88 @@ export async function handleIdle(context) {
         });
     }
     else {
+        // Check if everything is fully completed
+        let allFinished = false;
+        let hasUnplannedProjects = false;
+        const unplannedReadyTaskIds = [];
+        try {
+            const currentPrd = tasks.readPRD();
+            const projects = (currentPrd.projects || []);
+            if (projects.length > 0) {
+                const activeUncompleted = projects.filter((p) => !p.completed);
+                // B2: Projects with 0 stories need to be planned — synthesize a planning task for them
+                for (const p of activeUncompleted) {
+                    const stories = p.stories || [];
+                    if (stories.length === 0) {
+                        // This project has never been planned — create a synthetic "plan this project" task
+                        log(`[IDLE] Project "${p.slug || p.title}" has no stories yet — creating planning task.`);
+                        const syntheticId = `PLAN-${(p.slug || p.title || 'project').replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${Date.now().toString(36)}`;
+                        const syntheticTask = {
+                            id: syntheticId,
+                            title: `Plan project: ${p.title || p.slug}`,
+                            description: p.description || `Initialize SDD specifications and story backlog for project "${p.slug}".`,
+                            acceptanceCriteria: ['PLAN.md exists', 'PRODUCT-SPEC.md exists', 'TECHNICAL-SPEC.md exists', 'CONSTITUTION.md exists', 'prd.json has at least 1 story'],
+                            priority: 1,
+                            status: 'idle',
+                            passes: false,
+                            _projectSlug: p.slug,
+                            _projectTitle: p.title,
+                        };
+                        unplannedReadyTaskIds.push(syntheticId);
+                        hasUnplannedProjects = true;
+                        // Inject task into manager's task array so PLAN can find it
+                        const tasksArr = tasks._tasks;
+                        if (!tasksArr.find((t) => t.id === syntheticId)) {
+                            tasksArr.push(syntheticTask);
+                        }
+                    }
+                }
+                if (!hasUnplannedProjects) {
+                    const allStoriesCompleted = activeUncompleted.every((p) => {
+                        const stories = p.stories || [];
+                        return stories.length > 0 && stories.every((s) => s.passes || s.status === 'completed');
+                    });
+                    if (allStoriesCompleted && activeUncompleted.length > 0) {
+                        log(`[IDLE] All active projects have all stories completed. Marking them as completed...`);
+                        for (const p of activeUncompleted) {
+                            p.completed = true;
+                        }
+                        tasks.writePRD(currentPrd);
+                        allFinished = true;
+                    }
+                    else if (projects.every((p) => p.completed)) {
+                        allFinished = true;
+                    }
+                }
+            }
+        }
+        catch (_) { }
+        if (hasUnplannedProjects) {
+            log(`[IDLE] Found ${unplannedReadyTaskIds.length} unplanned project(s). Transitioning to PLAN.`);
+            stream.emit('System', 'system', {
+                action: 'PhaseChange',
+                phase: 'PLAN',
+                stateUpdates: {
+                    readyTaskIds: unplannedReadyTaskIds,
+                    idleDiscoverCount: 0,
+                },
+            });
+            return;
+        }
+        if (allFinished) {
+            log(`[IDLE] Every project in the loop backlog is completed. Transitioning to DONE and exiting loop.`);
+            stream.emit('System', 'system', {
+                action: 'PhaseChange',
+                phase: 'DONE',
+                stateUpdates: {
+                    currentTaskId: null,
+                    currentStory: null,
+                    idleDiscoverCount: 0,
+                },
+            });
+            setTimeout(() => process.exit(0), 1000);
+            return;
+        }
         let count = currentState?.idleDiscoverCount || 0;
         if (currentState?.lastPhase === 'WAIT_HUMAN') {
             count = 0;

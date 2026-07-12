@@ -72,7 +72,7 @@ export function getUniqueModels(collector) {
     const results = [];
     for (const [actualModel, entry] of uniqueMap.entries()) {
         const id = crypto.createHash('sha256').update(actualModel).digest('hex');
-        let dbRow = collector.get('SELECT * FROM model_health WHERE id = ?', [id]);
+        const dbRow = collector.get('SELECT * FROM model_health WHERE id = ?', [id]);
         const healthRow = dbRow || {};
         results.push({
             id,

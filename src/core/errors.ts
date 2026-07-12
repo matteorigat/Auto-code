@@ -61,42 +61,8 @@ export class AgentStagnationError extends HttpAppError {
   }
 }
 
-export class ContextOverflowError extends HttpAppError {
-  constructor(message: string = 'Context window limit reached') {
-    super(message, 413, 'CONTEXT_OVERFLOW');
-  }
-}
-
-export class ConfigurationError extends HttpAppError {
-  constructor(message: string = 'Invalid system configuration') {
-    super(message, 500, 'CONFIG_ERROR');
-  }
-}
-
-export class SandboxExecutionError extends HttpAppError {
-  constructor(message: string = 'Sandbox execution failed') {
-    super(message, 500, 'SANDBOX_ERROR');
-  }
-}
-
 export class QuotaExceededError extends HttpAppError {
   constructor(message: string = 'Quota limits exceeded') {
     super(message, 429, 'QUOTA_EXCEEDED');
-  }
-}
-
-export class InvalidTelemetryError extends HttpAppError {
-  constructor(message: string = 'Invalid telemetry payload') {
-    super(message, 400, 'TELEMETRY_ERROR');
-  }
-}
-
-export function isAppError(error: unknown): error is AppError {
-  return error instanceof AppError;
-}
-
-export function assertAppError(error: unknown, code?: string): asserts error is AppError {
-  if (!(error instanceof AppError)) {
-    throw new AppError('Expected AppError', 500, code ?? 'ASSERTION_ERROR');
   }
 }

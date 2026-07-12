@@ -34,6 +34,7 @@ export class AppState {
     this.modelRouterStats = null;
     this.modelRouterLogs = [];
     this.modelRouterModels = null;
+    this.modelRouterProxyStatus = null;
     this.activeTab = 'overview';
     this.timeRange = '1d';
     this.listeners = new Set();

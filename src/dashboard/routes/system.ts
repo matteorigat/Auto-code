@@ -17,29 +17,81 @@ export function createSystemRouter({ telemetryStore, config }: SystemDeps) {
   const router = Router();
 
   let diskCache = { used: 0, total: 0, pct: 0, lastCheck: 0 };
+  let memCache = { used: 0, total: 0, pct: 0, lastCheck: 0 };
 
   async function getDiskUsage(): Promise<void> {
     const now = Date.now();
     if (now - diskCache.lastCheck < 60000) return;
     try {
-      const isMac = process.platform === 'darwin';
-      const args = isMac ? ['-g', '/'] : ['-BG', '/'];
-      const { stdout } = await execFileAsync('df', args, {
+      const { stdout } = await execFileAsync('df', ['-k', '/'], {
         encoding: 'utf-8',
         timeout: 2000,
       });
       const parts = stdout.trim().split('\n').pop()?.split(/\s+/);
       if (parts && parts.length >= 5) {
+        const usedKB = parseInt(parts[2]);
+        const availKB = parseInt(parts[3]);
+        const totalKB = usedKB + availKB;
         diskCache = {
-          used: parseInt(parts[2]),
-          total: parseInt(parts[1]),
-          pct: parseFloat(parts[4] as string),
+          used: Math.round((usedKB / (1024 * 1024)) * 10) / 10,
+          total: Math.round((totalKB / (1024 * 1024)) * 10) / 10,
+          pct: totalKB > 0 ? parseFloat(((usedKB / totalKB) * 100).toFixed(1)) : 0,
           lastCheck: now,
         };
       }
     } catch {
       // ignore df errors
     }
+  }
+
+  async function getMemoryUsage(): Promise<void> {
+    const now = Date.now();
+    if (now - memCache.lastCheck < 30000) return;
+    const total = os.totalmem();
+    if (process.platform === 'darwin') {
+      try {
+        const { stdout } = await execFileAsync('vm_stat', [], {
+          encoding: 'utf-8',
+          timeout: 2000,
+        });
+        let pageSize = 16384;
+        const pages: Record<string, number> = {};
+        for (const line of stdout.trim().split('\n')) {
+          if (line.startsWith('Mach Virtual Memory Statistics:')) continue;
+          if (line.startsWith('page size of')) {
+            const m = line.match(/(\d+)/);
+            if (m) pageSize = parseInt(m[1]);
+            continue;
+          }
+          const colonIdx = line.indexOf(':');
+          if (colonIdx === -1) continue;
+          const key = line.substring(0, colonIdx).trim();
+          const val = parseInt(line.substring(colonIdx + 1).replace(/[.\s]/g, ''));
+          if (!isNaN(val)) pages[key] = val;
+        }
+        const active = pages['Pages active'] || 0;
+        const wired = pages['Pages wired down'] || 0;
+        const compressed = pages['Pages occupied by compressor'] || 0;
+        const usedBytes = (active + wired + compressed) * pageSize;
+        memCache = {
+          used: usedBytes,
+          total,
+          pct: parseFloat(((usedBytes / total) * 100).toFixed(1)),
+          lastCheck: now,
+        };
+        return;
+      } catch {
+        // fall through to os.freemem()
+      }
+    }
+    const free = os.freemem();
+    const used = total - free;
+    memCache = {
+      used,
+      total,
+      pct: parseFloat(((used / total) * 100).toFixed(1)),
+      lastCheck: now,
+    };
   }
 
   router.get('/projects', (req: Request, res: Response) => {
@@ -98,22 +150,22 @@ export function createSystemRouter({ telemetryStore, config }: SystemDeps) {
         // ignore CPU measurement errors
       }
 
-      await getDiskUsage();
+      await Promise.all([getDiskUsage(), getMemoryUsage()]);
 
       res.json({
         cpu_pct,
         cpuCores: os.cpus().length,
         uptime: os.uptime(),
-        ram_used: os.totalmem() - os.freemem(),
-        ram_total: os.totalmem(),
-        ram_pct: parseFloat((((os.totalmem() - os.freemem()) / os.totalmem()) * 100).toFixed(1)),
+        ram_used: memCache.used,
+        ram_total: memCache.total,
+        ram_pct: memCache.pct,
         disk_used: diskCache.used,
         disk_total: diskCache.total,
         disk_pct: diskCache.pct,
         cpu: cpu_pct,
-        ramUsed: os.totalmem() - os.freemem(),
-        ramTotal: os.totalmem(),
-        ramPct: parseFloat((((os.totalmem() - os.freemem()) / os.totalmem()) * 100).toFixed(1)),
+        ramUsed: memCache.used,
+        ramTotal: memCache.total,
+        ramPct: memCache.pct,
         diskUsed: diskCache.used,
         diskTotal: diskCache.total,
         diskPct: diskCache.pct,

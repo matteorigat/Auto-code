@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { createHash } from 'node:crypto';
 import config from '../config/index.js';
 import { getTelemetryClient } from '../dashboard/telemetry-client.js';
+import { ProxyManager } from './proxy-manager.js';
 
 type ProviderTier = 'opencode-free' | 'opencode-zen' | 'openrouter';
 
@@ -102,7 +103,11 @@ class SessionManager {
     }
   }
 
-  generateId(body: SessionBody | null | undefined, connectionId?: string, provider?: string): string | null {
+  generateId(
+    body: SessionBody | null | undefined,
+    connectionId?: string,
+    provider?: string,
+  ): string | null {
     if (!body || typeof body !== 'object') return null;
     const parts: string[] = [];
 
@@ -195,12 +200,7 @@ class SessionManager {
 
 // ─── Thinking Model Helpers (from OmniRoute) ──────────────────────────────
 
-const THINKING_MODEL_PATTERNS: RegExp[] = [
-  /deepseek/i,
-  /\bkimi\b/i,
-  /\bk2\b/i,
-  /\bminimax\b/i,
-];
+const THINKING_MODEL_PATTERNS: RegExp[] = [/deepseek/i, /\bkimi\b/i, /\bk2\b/i, /\bminimax\b/i];
 
 function isThinkingMessageModel(model: string | undefined | null): boolean {
   if (!model || typeof model !== 'string') return false;
@@ -217,7 +217,8 @@ function injectReasoningContentForThinkingModel(body: unknown): unknown {
     if (!message || typeof message !== 'object' || Array.isArray(message)) return message;
     const msg = message as Record<string, unknown>;
     if (msg.role !== 'assistant') return message;
-    if (typeof msg.reasoning_content === 'string' && msg.reasoning_content.trim().length > 0) return message;
+    if (typeof msg.reasoning_content === 'string' && msg.reasoning_content.trim().length > 0)
+      return message;
     modified = true;
     return { ...msg, reasoning_content: ' ' };
   });
@@ -241,23 +242,53 @@ const USER_AGENTS = [
 const TIER_MODELS: Record<string, ModelEntry[]> = {
   'tier-4-planner': [
     { id: 'big-pickle', name: 'Big Pickle', tier: 'tier-4', provider: 'opencode-free' },
-    { id: 'nemotron-3-super-free', name: 'Nemotron 3 Super', tier: 'tier-4', provider: 'opencode-free' },
+    {
+      id: 'nemotron-3-super-free',
+      name: 'Nemotron 3 Super',
+      tier: 'tier-4',
+      provider: 'opencode-free',
+    },
     { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', tier: 'tier-4', provider: 'openrouter' },
   ],
   'tier-3-builder': [
-    { id: 'deepseek-v4-flash-free', name: 'DeepSeek V4 Flash', tier: 'tier-3', provider: 'opencode-free' },
+    {
+      id: 'deepseek-v4-flash-free',
+      name: 'DeepSeek V4 Flash',
+      tier: 'tier-3',
+      provider: 'opencode-free',
+    },
     { id: 'minimax-m2.5-free', name: 'MiniMax M2.5', tier: 'tier-3', provider: 'opencode-free' },
-    { id: 'deepseek/deepseek-chat-v3-0324', name: 'DeepSeek V3', tier: 'tier-3', provider: 'openrouter' },
+    {
+      id: 'deepseek/deepseek-chat-v3-0324',
+      name: 'DeepSeek V3',
+      tier: 'tier-3',
+      provider: 'openrouter',
+    },
   ],
   'tier-2-hunter': [
-    { id: 'north-mini-code-free', name: 'North Mini Code', tier: 'tier-2', provider: 'opencode-free' },
+    {
+      id: 'north-mini-code-free',
+      name: 'North Mini Code',
+      tier: 'tier-2',
+      provider: 'opencode-free',
+    },
     { id: 'minimax-m3-free', name: 'MiniMax M3', tier: 'tier-2', provider: 'opencode-free' },
-    { id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick', tier: 'tier-2', provider: 'openrouter' },
+    {
+      id: 'meta-llama/llama-4-maverick',
+      name: 'Llama 4 Maverick',
+      tier: 'tier-2',
+      provider: 'openrouter',
+    },
   ],
   'tier-1-trivial': [
     { id: 'minimax-m3-free', name: 'MiniMax M3', tier: 'tier-1', provider: 'opencode-free' },
     { id: 'qwen3.6-plus-free', name: 'Qwen 3.6 Plus', tier: 'tier-1', provider: 'opencode-free' },
-    { id: 'meta-llama/llama-4-scout', name: 'Llama 4 Scout', tier: 'tier-1', provider: 'openrouter' },
+    {
+      id: 'meta-llama/llama-4-scout',
+      name: 'Llama 4 Scout',
+      tier: 'tier-1',
+      provider: 'openrouter',
+    },
   ],
 };
 
@@ -288,6 +319,7 @@ export class ModelRouter {
   private sessionManager = new SessionManager();
   private totalRequests: number = 0;
   private totalFailures: number = 0;
+  private proxyManager: ProxyManager;
 
   private zenApiKey: string | undefined;
   private openrouterApiKey: string | undefined;
@@ -295,13 +327,14 @@ export class ModelRouter {
   constructor(private port: number = 20128) {
     this.zenApiKey = process.env.OPENCODE_ZEN_API_KEY || process.env.OPENCODE_API_KEY;
     this.openrouterApiKey = process.env.OPENROUTER_API_KEY;
+    this.proxyManager = new ProxyManager();
 
     this.buildSlots();
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
   }
 
   private buildSlots(): void {
-    const freeSlots = 36;
+    const freeSlots = 8;
     for (let i = 1; i <= freeSlots; i++) {
       this.slots.push({
         cfg: {
@@ -370,7 +403,7 @@ export class ModelRouter {
 
     console.log(
       `[ModelRouter] Built ${this.slots.length} slots: ` +
-      `${freeSlots} free, ${this.zenApiKey ? 6 : 0} zen, ${this.openrouterApiKey ? 4 : 0} openrouter`
+        `${freeSlots} free, ${this.zenApiKey ? 6 : 0} zen, ${this.openrouterApiKey ? 4 : 0} openrouter`,
     );
   }
 
@@ -404,11 +437,13 @@ export class ModelRouter {
   private markSlotCooldown(slot: SlotState): void {
     slot.failureCount++;
     const backoff = Math.min(
-      CIRCUIT_BREAKER.backoffBaseMs * Math.pow(CIRCUIT_BREAKER.backoffMultiplier, slot.failureCount - 1),
+      CIRCUIT_BREAKER.backoffBaseMs *
+        Math.pow(CIRCUIT_BREAKER.backoffMultiplier, slot.failureCount - 1),
       CIRCUIT_BREAKER.backoffMaxMs,
     );
     slot.cooldownUntil = Date.now() + backoff + Math.random() * 1000;
-    slot.status = slot.failureCount >= CIRCUIT_BREAKER.failureThreshold ? 'circuit-open' : 'cooldown';
+    slot.status =
+      slot.failureCount >= CIRCUIT_BREAKER.failureThreshold ? 'circuit-open' : 'cooldown';
   }
 
   private markSlotSuccess(slot: SlotState): void {
@@ -441,17 +476,36 @@ export class ModelRouter {
       // Normalize path: some AI SDKs double-append /v1 (e.g. /v1/v1/chat/completions)
       const normalized = this.normalizePath(path);
 
-      if (req.method === 'GET' && (normalized === '/v1/models' || path === '/v1/models')) return this.handleModels(res);
-      if (req.method === 'POST' && (normalized === '/v1/chat/completions' || path === '/v1/chat/completions')) return this.handleChatCompletion(req, res);
+      if (req.method === 'GET' && (normalized === '/v1/models' || path === '/v1/models'))
+        return this.handleModels(res);
+      if (
+        req.method === 'POST' &&
+        (normalized === '/v1/chat/completions' || path === '/v1/chat/completions')
+      )
+        return this.handleChatCompletion(req, res);
 
-      if (req.method === 'GET' && path === '/api/health') return this.respondJson(res, 200, this.getHealth());
-      if (req.method === 'GET' && path === '/api/monitoring/health') return this.respondJson(res, 200, this.getMonitoringHealth());
-      if (req.method === 'GET' && path === '/api/providers/health-matrix') return this.respondJson(res, 200, this.getHealthMatrix());
-      if (req.method === 'GET' && path === '/api/model-router/accounts') return this.respondJson(res, 200, this.getAccounts());
-      if (req.method === 'GET' && path === '/api/model-router/stats') return this.respondJson(res, 200, this.getStats());
-      if (req.method === 'GET' && path === '/api/model-router/logs') return this.respondJson(res, 200, this.getLogs());
-      if (req.method === 'GET' && path === '/api/model-router/models') return this.respondJson(res, 200, this.getModelDetails());
-      if (req.method === 'POST' && path === '/api/model-router/reset-slot') return this.handleResetSlot(req, res);
+      if (req.method === 'GET' && path === '/api/health')
+        return this.respondJson(res, 200, this.getHealth());
+      if (req.method === 'GET' && path === '/api/monitoring/health')
+        return this.respondJson(res, 200, this.getMonitoringHealth());
+      if (req.method === 'GET' && path === '/api/providers/health-matrix')
+        return this.respondJson(res, 200, this.getHealthMatrix());
+      if (req.method === 'GET' && path === '/api/model-router/accounts')
+        return this.respondJson(res, 200, this.getAccounts());
+      if (req.method === 'GET' && path === '/api/model-router/stats')
+        return this.respondJson(res, 200, this.getStats());
+      if (req.method === 'GET' && path === '/api/model-router/logs')
+        return this.respondJson(res, 200, this.getLogs());
+      if (req.method === 'GET' && path === '/api/model-router/models')
+        return this.respondJson(res, 200, this.getModelDetails());
+      if (req.method === 'POST' && path === '/api/model-router/reset-slot')
+        return this.handleResetSlot(req, res);
+      if (req.method === 'POST' && path === '/api/model-router/proxy-rotate') {
+        const ok = await this.proxyManager.forceRotate();
+        return this.respondJson(res, ok ? 200 : 500, { ok, message: ok ? 'Proxy rotated' : 'Rotation failed or unsupported' });
+      }
+      if (req.method === 'GET' && path === '/api/model-router/proxy-status')
+        return this.respondJson(res, 200, this.proxyManager.getStatus());
 
       this.respondJson(res, 404, { error: 'not found', path });
     } catch (err) {
@@ -532,20 +586,27 @@ export class ModelRouter {
 
     // ── Session management (inspired by OmniRoute's sessionManager.ts) ──
     // Extract session ID from multiple header variants (OmniRoute pattern)
-    const extSessionId = this.extractHeader(clientHeaders, 'x-session-id')
-      || this.extractHeader(clientHeaders, 'x-session-affinity')
-      || this.extractHeader(clientHeaders, 'x_session_id')
-      || this.extractHeader(clientHeaders, 'x-omniroute-session')
-      || this.extractHeader(clientHeaders, 'session-id');
+    const extSessionId =
+      this.extractHeader(clientHeaders, 'x-session-id') ||
+      this.extractHeader(clientHeaders, 'x-session-affinity') ||
+      this.extractHeader(clientHeaders, 'x_session_id') ||
+      this.extractHeader(clientHeaders, 'x-omniroute-session') ||
+      this.extractHeader(clientHeaders, 'session-id');
     const sessionId = extSessionId
       ? `ext:${extSessionId.trim().slice(0, 64)}`
-      : this.sessionManager.generateId(body, undefined, resolvedModel?.includes('/') ? resolvedModel.split('/')[0] : 'model-router');
+      : this.sessionManager.generateId(
+          body,
+          undefined,
+          resolvedModel?.includes('/') ? resolvedModel.split('/')[0] : 'model-router',
+        );
     this.sessionManager.touch(sessionId, null);
     const affinitySlotId = this.sessionManager.getSlotAffinity(sessionId);
     const resolvedEntries = this.resolveModelEntries(resolvedModel);
 
     if (resolvedEntries.length === 0) {
-      return this.respondJson(res, 400, { error: { message: `No provider for model: ${requestedModel}`, type: 'invalid_model' } });
+      return this.respondJson(res, 400, {
+        error: { message: `No provider for model: ${requestedModel}`, type: 'invalid_model' },
+      });
     }
 
     const isStream = body.stream === true;
@@ -579,7 +640,14 @@ export class ModelRouter {
       const callStart = Date.now();
 
       try {
-        const result = await this.callUpstream(slot, candidate.upstreamModel, modifiedBody, isStream, clientHeaders, sessionId);
+        const result = await this.callUpstream(
+          slot,
+          candidate.upstreamModel,
+          modifiedBody,
+          isStream,
+          clientHeaders,
+          sessionId,
+        );
 
         this.markSlotSuccess(slot);
         slot.totalCalls++;
@@ -590,7 +658,8 @@ export class ModelRouter {
         // Bind session to this slot for sticky routing
         if (sessionId) this.sessionManager.touch(sessionId, slot.cfg.id);
 
-        const tokensIn = body.messages?.reduce?.((sum: number, m: any) => sum + (m.content?.length || 0), 0) || 0;
+        const tokensIn =
+          body.messages?.reduce?.((sum: number, m: any) => sum + (m.content?.length || 0), 0) || 0;
 
         let tokensOut = 0;
         let responseContent = '';
@@ -600,7 +669,7 @@ export class ModelRouter {
           tokensOut = streamingResult.tokensOut;
           responseContent = streamingResult.content;
         } else {
-          tokensOut = (result.usage?.completion_tokens || 0);
+          tokensOut = result.usage?.completion_tokens || 0;
           responseContent = result?.choices?.[0]?.message?.content || '';
           this.respondJson(res, 200, result);
         }
@@ -627,7 +696,15 @@ export class ModelRouter {
         });
 
         // Push telemetry to dashboard
-        this.pushTelemetry(candidate.upstreamModel, slot, tokensIn, tokensOut, sessionId, prompt, responseContent);
+        this.pushTelemetry(
+          candidate.upstreamModel,
+          slot,
+          tokensIn,
+          tokensOut,
+          sessionId,
+          prompt,
+          responseContent,
+        );
 
         if (isStream) return;
       } catch (err) {
@@ -652,11 +729,16 @@ export class ModelRouter {
           ts: callStart,
         });
 
-        console.warn(`[ModelRouter] ${slot.cfg.id} failed (${slot.failureCount}x): ${errorMessage}`);
+        console.warn(
+          `[ModelRouter] ${slot.cfg.id} failed (${slot.failureCount}x): ${errorMessage}`,
+        );
 
         // For free tier 401/model-not-supported: skip slot silently and try next
         const isFreeSlot = slot.cfg.tier === 'opencode-free';
-        const isRateLimitOrAuth = errorMessage.includes('429') || errorMessage.includes('401') || errorMessage.includes('model not supported');
+        const isRateLimitOrAuth =
+          errorMessage.includes('429') ||
+          errorMessage.includes('401') ||
+          errorMessage.includes('model not supported');
         if (isFreeSlot && isRateLimitOrAuth) {
           continue;
         }
@@ -684,7 +766,10 @@ export class ModelRouter {
     });
   }
 
-  private extractHeader(headers: Record<string, string | string[] | undefined>, name: string): string | undefined {
+  private extractHeader(
+    headers: Record<string, string | string[] | undefined>,
+    name: string,
+  ): string | undefined {
     const val = headers[name];
     if (Array.isArray(val)) return val[0];
     return val;
@@ -709,7 +794,10 @@ export class ModelRouter {
     return [{ id: resolvedModel, name: resolvedModel, tier: 'tier-3', provider: 'opencode-free' }];
   }
 
-  private buildCandidates(entries: ModelEntry[], affinitySlotId?: string | null): Array<{ slot: SlotState; upstreamModel: string; priority: number }> {
+  private buildCandidates(
+    entries: ModelEntry[],
+    affinitySlotId?: string | null,
+  ): Array<{ slot: SlotState; upstreamModel: string; priority: number }> {
     const candidates: Array<{ slot: SlotState; upstreamModel: string; priority: number }> = [];
 
     for (const entry of entries) {
@@ -721,7 +809,9 @@ export class ModelRouter {
           candidates.push({ slot: picked, upstreamModel: entry.id, priority: p });
         }
       } else {
-        const matchingSlots = this.slots.filter((s) => s.cfg.tier === entry.provider && s.status !== 'disabled');
+        const matchingSlots = this.slots.filter(
+          (s) => s.cfg.tier === entry.provider && s.status !== 'disabled',
+        );
         const priority = entry.provider === 'opencode-zen' ? 2 : 3;
 
         for (const slot of matchingSlots) {
@@ -733,7 +823,9 @@ export class ModelRouter {
 
       // Add affinity slot separately if it wasn't picked above
       if (affinitySlotId && entry.provider === 'opencode-free') {
-        const affSlot = this.slots.find((s) => s.cfg.id === affinitySlotId && s.cfg.tier === 'opencode-free');
+        const affSlot = this.slots.find(
+          (s) => s.cfg.id === affinitySlotId && s.cfg.tier === 'opencode-free',
+        );
         if (affSlot && affSlot.status !== 'disabled') {
           const alreadyHas = candidates.some((c) => c.slot.cfg.id === affinitySlotId);
           if (!alreadyHas) {
@@ -771,7 +863,8 @@ export class ModelRouter {
     clientHeaders?: Record<string, string | string[] | undefined>,
     sessionId?: string | null,
   ): Promise<any> {
-    const ua = USER_AGENTS[parseInt(slot.cfg.fingerprint.split('-')[1] || '1', 36) % USER_AGENTS.length];
+    const ua =
+      USER_AGENTS[parseInt(slot.cfg.fingerprint.split('-')[1] || '1', 36) % USER_AGENTS.length];
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -825,7 +918,11 @@ export class ModelRouter {
 
     const upstreamBody = { ...body, model, stream: isStream };
     // Strip any provider prefix (openai/, model-router/, etc.)
-    if (upstreamBody.model && typeof upstreamBody.model === 'string' && upstreamBody.model.includes('/')) {
+    if (
+      upstreamBody.model &&
+      typeof upstreamBody.model === 'string' &&
+      upstreamBody.model.includes('/')
+    ) {
       const parts = upstreamBody.model.split('/');
       upstreamBody.model = parts.slice(1).join('/');
     }
@@ -834,22 +931,37 @@ export class ModelRouter {
     const timeout = setTimeout(() => controller.abort(), 180_000);
 
     try {
-      const res = await fetch(`${slot.cfg.baseUrl}/chat/completions`, {
+      // Build fetch options — inject proxy dispatcher for free slots
+      const fetchOptions: RequestInit & { dispatcher?: unknown } = {
         method: 'POST',
         headers,
         body: JSON.stringify(upstreamBody),
         signal: controller.signal,
-      });
+      };
+
+      if (slot.cfg.tier === 'opencode-free') {
+        const dispatcher = this.proxyManager.getDispatcher();
+        if (dispatcher) {
+          fetchOptions.dispatcher = dispatcher;
+        }
+      }
+
+      const res = await fetch(`${slot.cfg.baseUrl}/chat/completions`, fetchOptions as RequestInit);
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
+        if (slot.cfg.tier === 'opencode-free') this.proxyManager.reportFailure(res.status);
         if (res.status === 429) throw new Error(`Rate limited (429): ${text.slice(0, 200)}`);
         if (res.status === 401) throw new Error(`Unauthorized (401): ${text.slice(0, 200)}`);
         if (res.status === 403) throw new Error(`Forbidden (403): ${text.slice(0, 200)}`);
         if (res.status === 404) throw new Error(`Model not found (404): ${text.slice(0, 200)}`);
-        if (res.status >= 500) throw new Error(`Upstream error (${res.status}): ${text.slice(0, 200)}`);
+        if (res.status >= 500)
+          throw new Error(`Upstream error (${res.status}): ${text.slice(0, 200)}`);
         throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
       }
+
+      // Proxy worked — report success
+      if (slot.cfg.tier === 'opencode-free') this.proxyManager.reportSuccess();
 
       if (isStream) {
         return res;
@@ -861,11 +973,15 @@ export class ModelRouter {
     }
   }
 
-  private async streamResponse(upstreamRes: Response, res: http.ServerResponse, req: http.IncomingMessage): Promise<{ tokensOut: number; content: string }> {
+  private async streamResponse(
+    upstreamRes: Response,
+    res: http.ServerResponse,
+    req: http.IncomingMessage,
+  ): Promise<{ tokensOut: number; content: string }> {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
+      Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     });
 
@@ -911,7 +1027,9 @@ export class ModelRouter {
               if (parsed?.usage?.completion_tokens) {
                 explicitTokensOut = parsed.usage.completion_tokens;
               }
-            } catch { /* skip malformed SSE */ }
+            } catch {
+              /* skip malformed SSE */
+            }
           }
         }
 
@@ -932,8 +1050,20 @@ export class ModelRouter {
     return { tokensOut, content };
   }
 
-  private recordModelStat(model: string, tokensIn: number, tokensOut: number, success: boolean, ts: number): void {
-    const existing = this.modelStats.get(model) || { calls: 0, tokensIn: 0, tokensOut: 0, failures: 0, lastCallAt: null as number | null };
+  private recordModelStat(
+    model: string,
+    tokensIn: number,
+    tokensOut: number,
+    success: boolean,
+    ts: number,
+  ): void {
+    const existing = this.modelStats.get(model) || {
+      calls: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      failures: 0,
+      lastCallAt: null as number | null,
+    };
     existing.calls++;
     existing.tokensIn += tokensIn;
     existing.tokensOut += tokensOut;
@@ -950,27 +1080,31 @@ export class ModelRouter {
   }
 
   private handleResetSlot(req: http.IncomingMessage, res: http.ServerResponse): void {
-    this.readBody(req).then((body) => {
-      const slotId = body.slotId as string;
-      const slot = this.slots.find((s) => s.cfg.id === slotId);
-      if (!slot) {
-        return this.respondJson(res, 404, { error: `Slot ${slotId} not found` });
-      }
-      slot.cooldownUntil = 0;
-      slot.failureCount = 0;
-      slot.status = 'active';
-      slot.lastError = null;
-      console.log(`[ModelRouter] Reset slot ${slotId}`);
-      this.respondJson(res, 200, { ok: true, slotId });
-    }).catch((err) => {
-      this.respondJson(res, 400, { error: `Invalid request body: ${(err as Error).message}` });
-    });
+    this.readBody(req)
+      .then((body) => {
+        const slotId = body.slotId as string;
+        const slot = this.slots.find((s) => s.cfg.id === slotId);
+        if (!slot) {
+          return this.respondJson(res, 404, { error: `Slot ${slotId} not found` });
+        }
+        slot.cooldownUntil = 0;
+        slot.failureCount = 0;
+        slot.status = 'active';
+        slot.lastError = null;
+        console.log(`[ModelRouter] Reset slot ${slotId}`);
+        this.respondJson(res, 200, { ok: true, slotId });
+      })
+      .catch((err) => {
+        this.respondJson(res, 400, { error: `Invalid request body: ${(err as Error).message}` });
+      });
   }
 
   // ── Monitoring APIs ──────────────────────────────────────────────────
 
   private getHealth() {
-    const slotsActive = this.slots.filter((s) => s.status === 'active' && s.cooldownUntil <= Date.now()).length;
+    const slotsActive = this.slots.filter(
+      (s) => s.status === 'active' && s.cooldownUntil <= Date.now(),
+    ).length;
     return {
       status: slotsActive > 0 ? 'ok' : 'degraded',
       slots: this.slots.length,
@@ -991,16 +1125,29 @@ export class ModelRouter {
       providers: {
         'opencode-free': {
           slots: this.slots.filter((s) => s.cfg.tier === 'opencode-free').length,
-          active: this.slots.filter((s) => s.cfg.tier === 'opencode-free' && s.status === 'active' && s.cooldownUntil <= Date.now()).length,
+          active: this.slots.filter(
+            (s) =>
+              s.cfg.tier === 'opencode-free' &&
+              s.status === 'active' &&
+              s.cooldownUntil <= Date.now(),
+          ).length,
         },
         'opencode-zen': {
           slots: this.slots.filter((s) => s.cfg.tier === 'opencode-zen').length,
-          active: this.slots.filter((s) => s.cfg.tier === 'opencode-zen' && s.status === 'active' && s.cooldownUntil <= Date.now()).length,
+          active: this.slots.filter(
+            (s) =>
+              s.cfg.tier === 'opencode-zen' &&
+              s.status === 'active' &&
+              s.cooldownUntil <= Date.now(),
+          ).length,
           configured: !!this.zenApiKey,
         },
         openrouter: {
           slots: this.slots.filter((s) => s.cfg.tier === 'openrouter').length,
-          active: this.slots.filter((s) => s.cfg.tier === 'openrouter' && s.status === 'active' && s.cooldownUntil <= Date.now()).length,
+          active: this.slots.filter(
+            (s) =>
+              s.cfg.tier === 'openrouter' && s.status === 'active' && s.cooldownUntil <= Date.now(),
+          ).length,
           configured: !!this.openrouterApiKey,
         },
       },
@@ -1012,9 +1159,12 @@ export class ModelRouter {
     for (const tier of ['opencode-free', 'opencode-zen', 'openrouter'] as ProviderTier[]) {
       const tierSlots = this.slots.filter((s) => s.cfg.tier === tier);
       providers[tier] = {
-        status: tierSlots.some((s) => s.status === 'active' && s.cooldownUntil <= Date.now()) ? 'active' : 'down',
+        status: tierSlots.some((s) => s.status === 'active' && s.cooldownUntil <= Date.now())
+          ? 'active'
+          : 'down',
         totalSlots: tierSlots.length,
-        activeSlots: tierSlots.filter((s) => s.status === 'active' && s.cooldownUntil <= Date.now()).length,
+        activeSlots: tierSlots.filter((s) => s.status === 'active' && s.cooldownUntil <= Date.now())
+          .length,
         cooldownSlots: tierSlots.filter((s) => s.cooldownUntil > Date.now()).length,
         circuitOpenSlots: tierSlots.filter((s) => s.status === 'circuit-open').length,
         totalCalls: tierSlots.reduce((sum, s) => sum + s.totalCalls, 0),
@@ -1055,32 +1205,56 @@ export class ModelRouter {
     return {
       totalRequests: this.totalRequests,
       totalFailures: this.totalFailures,
-      successRate: this.totalRequests > 0 ? parseFloat(((this.totalRequests - this.totalFailures) / this.totalRequests * 100).toFixed(1)) : null,
+      successRate:
+        this.totalRequests > 0
+          ? parseFloat(
+              (((this.totalRequests - this.totalFailures) / this.totalRequests) * 100).toFixed(1),
+            )
+          : null,
       recent5m: {
         requests: recentLogs.length,
         successes: recentSuccess.length,
         failures: recentFailure.length,
-        avgLatencyMs: recentSuccess.length > 0
-          ? Math.round(recentSuccess.reduce((s, l) => s + l.latencyMs, 0) / recentSuccess.length)
-          : null,
+        avgLatencyMs:
+          recentSuccess.length > 0
+            ? Math.round(recentSuccess.reduce((s, l) => s + l.latencyMs, 0) / recentSuccess.length)
+            : null,
         tokensIn: recentSuccess.reduce((s, l) => s + l.tokensIn, 0),
         tokensOut: recentSuccess.reduce((s, l) => s + l.tokensOut, 0),
       },
       byTier: {
         'opencode-free': {
-          calls: this.slots.filter((s) => s.cfg.tier === 'opencode-free').reduce((sum, s) => sum + s.totalCalls, 0),
-          tokensIn: this.slots.filter((s) => s.cfg.tier === 'opencode-free').reduce((sum, s) => sum + s.totalTokensIn, 0),
-          tokensOut: this.slots.filter((s) => s.cfg.tier === 'opencode-free').reduce((sum, s) => sum + s.totalTokensOut, 0),
+          calls: this.slots
+            .filter((s) => s.cfg.tier === 'opencode-free')
+            .reduce((sum, s) => sum + s.totalCalls, 0),
+          tokensIn: this.slots
+            .filter((s) => s.cfg.tier === 'opencode-free')
+            .reduce((sum, s) => sum + s.totalTokensIn, 0),
+          tokensOut: this.slots
+            .filter((s) => s.cfg.tier === 'opencode-free')
+            .reduce((sum, s) => sum + s.totalTokensOut, 0),
         },
         'opencode-zen': {
-          calls: this.slots.filter((s) => s.cfg.tier === 'opencode-zen').reduce((sum, s) => sum + s.totalCalls, 0),
-          tokensIn: this.slots.filter((s) => s.cfg.tier === 'opencode-zen').reduce((sum, s) => sum + s.totalTokensIn, 0),
-          tokensOut: this.slots.filter((s) => s.cfg.tier === 'opencode-zen').reduce((sum, s) => sum + s.totalTokensOut, 0),
+          calls: this.slots
+            .filter((s) => s.cfg.tier === 'opencode-zen')
+            .reduce((sum, s) => sum + s.totalCalls, 0),
+          tokensIn: this.slots
+            .filter((s) => s.cfg.tier === 'opencode-zen')
+            .reduce((sum, s) => sum + s.totalTokensIn, 0),
+          tokensOut: this.slots
+            .filter((s) => s.cfg.tier === 'opencode-zen')
+            .reduce((sum, s) => sum + s.totalTokensOut, 0),
         },
         openrouter: {
-          calls: this.slots.filter((s) => s.cfg.tier === 'openrouter').reduce((sum, s) => sum + s.totalCalls, 0),
-          tokensIn: this.slots.filter((s) => s.cfg.tier === 'openrouter').reduce((sum, s) => sum + s.totalTokensIn, 0),
-          tokensOut: this.slots.filter((s) => s.cfg.tier === 'openrouter').reduce((sum, s) => sum + s.totalTokensOut, 0),
+          calls: this.slots
+            .filter((s) => s.cfg.tier === 'openrouter')
+            .reduce((sum, s) => sum + s.totalCalls, 0),
+          tokensIn: this.slots
+            .filter((s) => s.cfg.tier === 'openrouter')
+            .reduce((sum, s) => sum + s.totalTokensIn, 0),
+          tokensOut: this.slots
+            .filter((s) => s.cfg.tier === 'openrouter')
+            .reduce((sum, s) => sum + s.totalTokensOut, 0),
         },
       },
       perModel: Object.fromEntries(this.modelStats.entries()),
@@ -1095,13 +1269,25 @@ export class ModelRouter {
   }
 
   private getModelDetails() {
-    return { tiers: TIER_MODELS, aliases: MODEL_ALIASES, stats: Object.fromEntries(this.modelStats.entries()) };
+    return {
+      tiers: TIER_MODELS,
+      aliases: MODEL_ALIASES,
+      stats: Object.fromEntries(this.modelStats.entries()),
+    };
   }
 
   /**
    * Push a model call event to the dashboard telemetry store.
    */
-  private pushTelemetry(model: string, slot: SlotState, tokensIn: number, tokensOut: number, sessionId?: string | null, prompt?: string, response?: string): void {
+  private pushTelemetry(
+    model: string,
+    slot: SlotState,
+    tokensIn: number,
+    tokensOut: number,
+    sessionId?: string | null,
+    prompt?: string,
+    response?: string,
+  ): void {
     const telemetry = getTelemetryClient();
     telemetry.logCall({
       type: 'model.completed',

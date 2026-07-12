@@ -40,6 +40,12 @@ export async function handleQa(context) {
         }
         else {
             log(`[QA] ${taskId} FAILED`);
+            // F2: Reject LLM self-certification — reset passes=false if builder set it prematurely.
+            // The QA gate is the authoritative source of truth, not the LLM.
+            if (task.passes === true) {
+                task.passes = false;
+                log(`[QA] F2: Reset passes=false for ${taskId} — QA failed, LLM self-cert rejected.`);
+            }
             const reflectionCount = currentState.reflectionCount || 0;
             stream.emit('System', 'system', {
                 action: 'PhaseChange',
@@ -47,8 +53,8 @@ export async function handleQa(context) {
                 stateUpdates: {
                     previousError: qa.results
                         .filter((r) => !r.passed)
-                        .map((r) => r.output)
-                        .join('\n'),
+                        .map((r) => `[${r.name}]\n${r.output}`)
+                        .join('\n---\n'),
                     fixTaskId: taskId,
                     reflectionCount: reflectionCount + 1,
                 },

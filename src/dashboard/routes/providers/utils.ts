@@ -74,7 +74,10 @@ export async function runModelHealthProbe(
 
 export function getUniqueModels(collector: MetricsCollector): ModelResult[] {
   const dbRows = collector.query('SELECT * FROM model_health') as ModelHealthRow[];
-  const uniqueMap = new Map<string, { actual_model: string; provider: string; aliases: string[] }>();
+  const uniqueMap = new Map<
+    string,
+    { actual_model: string; provider: string; aliases: string[] }
+  >();
 
   for (const r of dbRows) {
     const dbModelName = String(r.model_name || '');
@@ -97,7 +100,7 @@ export function getUniqueModels(collector: MetricsCollector): ModelResult[] {
   const results: ModelResult[] = [];
   for (const [actualModel, entry] of uniqueMap.entries()) {
     const id = crypto.createHash('sha256').update(actualModel).digest('hex');
-    let dbRow = collector.get('SELECT * FROM model_health WHERE id = ?', [id]) as
+    const dbRow = collector.get('SELECT * FROM model_health WHERE id = ?', [id]) as
       | ModelHealthRow
       | undefined;
 

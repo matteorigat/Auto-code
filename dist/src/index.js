@@ -106,7 +106,6 @@ dashboardServer.start();
     bus.on('telemetry', ({ type, source, message, data }) => {
         telemetry.emit(type, source, message, data);
     });
-    const projectPath = process.argv[2] || process.cwd();
     const ok = await processManager.waitForHealth(10);
     if (ok) {
         console.log('✅ opencode pronto. Starting poll...');

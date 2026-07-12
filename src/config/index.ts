@@ -44,6 +44,8 @@ if (process.env.KILO_API_KEY && !process.env.KILOCODE_API_KEY) {
   process.env.KILOCODE_API_KEY = process.env.KILO_API_KEY;
 }
 
+export type ProxyStrategy = 'none' | 'webshare' | 'custom' | 'tor';
+
 export interface AppConfig {
   telegram: {
     botToken: string;
@@ -66,6 +68,21 @@ export interface AppConfig {
     url: string;
     opencodeZenApiKey?: string;
     openrouterApiKey?: string;
+  };
+  proxy: {
+    strategy: ProxyStrategy;
+    webshare?: {
+      user: string;
+      pass: string;
+      host: string;
+      port: number;
+    };
+    customList?: string[];
+    tor?: {
+      socksPort: number;
+      controlPort: number;
+      controlPassword: string;
+    };
   };
   loop: {
     dailyCostLimit: number;
@@ -121,9 +138,34 @@ const config: AppConfig = {
   },
   modelRouter: {
     port: parseNum(process.env.MODELROUTER_PORT, 20128),
-    url: process.env.MODELROUTER_URL || `http://127.0.0.1:${parseNum(process.env.MODELROUTER_PORT, 20128)}`,
+    url:
+      process.env.MODELROUTER_URL ||
+      `http://127.0.0.1:${parseNum(process.env.MODELROUTER_PORT, 20128)}`,
     opencodeZenApiKey: process.env.OPENCODE_ZEN_API_KEY || process.env.OPENCODE_API_KEY,
     openrouterApiKey: process.env.OPENROUTER_API_KEY,
+  },
+  proxy: {
+    strategy: (process.env.PROXY_STRATEGY || 'none').toLowerCase() as ProxyStrategy,
+    webshare: process.env.WEBSHARE_USER
+      ? {
+          user: process.env.WEBSHARE_USER,
+          pass: process.env.WEBSHARE_PASS || '',
+          host: process.env.WEBSHARE_HOST || 'p.webshare.io',
+          port: parseNum(process.env.WEBSHARE_PORT, 1080),
+        }
+      : undefined,
+    customList: process.env.PROXY_LIST
+      ? process.env.PROXY_LIST.split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined,
+    tor: process.env.PROXY_STRATEGY === 'tor'
+      ? {
+          socksPort: parseNum(process.env.TOR_SOCKS_PORT, 9050),
+          controlPort: parseNum(process.env.TOR_CONTROL_PORT, 9051),
+          controlPassword: process.env.TOR_CONTROL_PASSWORD || '',
+        }
+      : undefined,
   },
   loop: {
     dailyCostLimit: parseNum(process.env.LOOP_DAILY_COST_LIMIT, 10.0),

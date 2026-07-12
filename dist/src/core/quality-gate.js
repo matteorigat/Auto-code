@@ -23,14 +23,14 @@ export class QualityGate {
             const { getDockerController } = await import('../services/docker-sandbox.js');
             dockerController = getDockerController(this.projectPath);
         }
-        catch (e) {
+        catch {
             console.warn('⚠️ Docker unavailable, fallback to direct local execution.');
         }
         if (dockerAvailable && dockerController) {
             try {
                 await dockerController.startSandbox(execTaskId, workDir);
             }
-            catch (e) {
+            catch {
                 console.warn('⚠️ Failed to start Docker sandbox, fallback to direct local execution.');
                 dockerAvailable = false;
             }
@@ -107,7 +107,7 @@ export class QualityGate {
                 if (cfg.checks && Array.isArray(cfg.checks))
                     return cfg.checks;
             }
-            catch (e) {
+            catch {
                 /* intentional: file missing or invalid JSON */
             }
         }
@@ -173,4 +173,3 @@ export class QualityGate {
         return [];
     }
 }
-export default QualityGate;

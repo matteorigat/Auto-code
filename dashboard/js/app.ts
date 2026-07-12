@@ -147,6 +147,7 @@ async function fetchSnapshot() {
         mrAccountsRes,
         mrStatsRes,
         mrModelsRes,
+        mrProxyStatusRes,
       ] = await Promise.all([
         api.get(`/summary${rangeQuery}`).catch(() => null),
         api.get('/bridge-state').catch(() => null),
@@ -162,6 +163,7 @@ async function fetchSnapshot() {
         api.get('/model-router/accounts').catch(() => null),
         api.get('/model-router/stats').catch(() => null),
         api.get('/model-router/models').catch(() => null),
+        api.get('/model-router/proxy-status').catch(() => null),
       ]);
 
       if (summaryRes) {
@@ -190,6 +192,9 @@ async function fetchSnapshot() {
       }
       if (mrModelsRes && !mrModelsRes.error) {
         state.modelRouterModels = mrModelsRes;
+      }
+      if (mrProxyStatusRes && !mrProxyStatusRes.error) {
+        state.modelRouterProxyStatus = mrProxyStatusRes;
       }
       if (logsRes && logsRes.events) {
         state.bulkAddEvents(logsRes.events);

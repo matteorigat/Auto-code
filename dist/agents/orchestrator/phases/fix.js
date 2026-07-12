@@ -60,12 +60,16 @@ export async function handleFix(context) {
         log(`[FIX] Applying generated patch...`);
         const patchFile = join(ws, '.hydra-temp.patch');
         writeFileSync(patchFile, patchContent);
+        let patchSuccess = false;
+        let patchErrorMsg = '';
         try {
             await safety.runSafeCommand(taskId, 'patch -p1 < .hydra-temp.patch', ws);
             log(`[FIX] Patch applied successfully.`);
+            patchSuccess = true;
         }
         catch (e) {
-            log(`[FIX] Patch failed to apply: ${e.message}`);
+            patchErrorMsg = e.message || 'patch command failed';
+            log(`[FIX] Patch failed to apply: ${patchErrorMsg}`);
         }
         try {
             unlinkSync(patchFile);
@@ -73,9 +77,22 @@ export async function handleFix(context) {
         catch (e) {
             console.error('Ignored error:', e.message);
         }
+        if (!patchSuccess) {
+            // Patch could not be applied — escalate to WAIT_HUMAN to avoid infinite fix loop
+            log(`[FIX] ESCALATING: patch could not be applied cleanly (${patchErrorMsg}). Requires human review.`);
+            stream.emit('System', 'system', {
+                action: 'PhaseChange',
+                phase: 'WAIT_HUMAN',
+                stateUpdates: {
+                    humanGateReason: `Patch failed to apply for task ${taskId}: ${patchErrorMsg.slice(0, 300)}`,
+                    resumeTarget: 'FIX',
+                },
+            });
+            return;
+        }
     }
     else {
-        log(`[FIX] No valid diff block found in Patcher response.`);
+        log(`[FIX] No valid diff block found in Patcher response. Retrying QA to surface exact failures.`);
     }
     stream.emit('System', 'system', { action: 'PhaseChange', phase: 'QA' });
 }

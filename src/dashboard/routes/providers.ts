@@ -15,7 +15,9 @@ async function proxyModelRouter(path: string): Promise<Record<string, any> | nul
     const base = process.env.MODELROUTER_URL || 'http://127.0.0.1:20128';
     const r = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(5000) });
     if (r.ok) return (await r.json()) as Record<string, any>;
-  } catch { /* ModelRouter unavailable */ }
+  } catch {
+    /* ModelRouter unavailable */
+  }
   return null;
 }
 
@@ -54,6 +56,25 @@ export function createProvidersRouter({ config, collector, telemetryStore }: Rou
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(req.body),
+        signal: AbortSignal.timeout(5000),
+      });
+      res.status(r.status).json(await r.json());
+    } catch {
+      res.status(502).json({ error: 'ModelRouter unavailable' });
+    }
+  });
+
+  router.get('/model-router/proxy-status', async (req: Request, res: Response) => {
+    const data = await proxyModelRouter('/api/model-router/proxy-status');
+    res.json(data ?? { strategy: 'unknown', proxies: [] });
+  });
+
+  router.post('/model-router/proxy-rotate', async (req: Request, res: Response) => {
+    try {
+      const base = process.env.MODELROUTER_URL || 'http://127.0.0.1:20128';
+      const r = await fetch(`${base}/api/model-router/proxy-rotate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(5000),
       });
       res.status(r.status).json(await r.json());

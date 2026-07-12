@@ -122,12 +122,7 @@ class SessionManager {
     }
 }
 // ─── Thinking Model Helpers (from OmniRoute) ──────────────────────────────
-const THINKING_MODEL_PATTERNS = [
-    /deepseek/i,
-    /\bkimi\b/i,
-    /\bk2\b/i,
-    /\bminimax\b/i,
-];
+const THINKING_MODEL_PATTERNS = [/deepseek/i, /\bkimi\b/i, /\bk2\b/i, /\bminimax\b/i];
 function isThinkingMessageModel(model) {
     if (!model || typeof model !== 'string')
         return false;
@@ -168,23 +163,53 @@ const USER_AGENTS = [
 const TIER_MODELS = {
     'tier-4-planner': [
         { id: 'big-pickle', name: 'Big Pickle', tier: 'tier-4', provider: 'opencode-free' },
-        { id: 'nemotron-3-super-free', name: 'Nemotron 3 Super', tier: 'tier-4', provider: 'opencode-free' },
+        {
+            id: 'nemotron-3-super-free',
+            name: 'Nemotron 3 Super',
+            tier: 'tier-4',
+            provider: 'opencode-free',
+        },
         { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', tier: 'tier-4', provider: 'openrouter' },
     ],
     'tier-3-builder': [
-        { id: 'deepseek-v4-flash-free', name: 'DeepSeek V4 Flash', tier: 'tier-3', provider: 'opencode-free' },
+        {
+            id: 'deepseek-v4-flash-free',
+            name: 'DeepSeek V4 Flash',
+            tier: 'tier-3',
+            provider: 'opencode-free',
+        },
         { id: 'minimax-m2.5-free', name: 'MiniMax M2.5', tier: 'tier-3', provider: 'opencode-free' },
-        { id: 'deepseek/deepseek-chat-v3-0324', name: 'DeepSeek V3', tier: 'tier-3', provider: 'openrouter' },
+        {
+            id: 'deepseek/deepseek-chat-v3-0324',
+            name: 'DeepSeek V3',
+            tier: 'tier-3',
+            provider: 'openrouter',
+        },
     ],
     'tier-2-hunter': [
-        { id: 'north-mini-code-free', name: 'North Mini Code', tier: 'tier-2', provider: 'opencode-free' },
+        {
+            id: 'north-mini-code-free',
+            name: 'North Mini Code',
+            tier: 'tier-2',
+            provider: 'opencode-free',
+        },
         { id: 'minimax-m3-free', name: 'MiniMax M3', tier: 'tier-2', provider: 'opencode-free' },
-        { id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick', tier: 'tier-2', provider: 'openrouter' },
+        {
+            id: 'meta-llama/llama-4-maverick',
+            name: 'Llama 4 Maverick',
+            tier: 'tier-2',
+            provider: 'openrouter',
+        },
     ],
     'tier-1-trivial': [
         { id: 'minimax-m3-free', name: 'MiniMax M3', tier: 'tier-1', provider: 'opencode-free' },
         { id: 'qwen3.6-plus-free', name: 'Qwen 3.6 Plus', tier: 'tier-1', provider: 'opencode-free' },
-        { id: 'meta-llama/llama-4-scout', name: 'Llama 4 Scout', tier: 'tier-1', provider: 'openrouter' },
+        {
+            id: 'meta-llama/llama-4-scout',
+            name: 'Llama 4 Scout',
+            tier: 'tier-1',
+            provider: 'openrouter',
+        },
     ],
 };
 const MODEL_ALIASES = {
@@ -316,9 +341,11 @@ export class ModelRouter {
      */
     markSlotCooldown(slot) {
         slot.failureCount++;
-        const backoff = Math.min(CIRCUIT_BREAKER.backoffBaseMs * Math.pow(CIRCUIT_BREAKER.backoffMultiplier, slot.failureCount - 1), CIRCUIT_BREAKER.backoffMaxMs);
+        const backoff = Math.min(CIRCUIT_BREAKER.backoffBaseMs *
+            Math.pow(CIRCUIT_BREAKER.backoffMultiplier, slot.failureCount - 1), CIRCUIT_BREAKER.backoffMaxMs);
         slot.cooldownUntil = Date.now() + backoff + Math.random() * 1000;
-        slot.status = slot.failureCount >= CIRCUIT_BREAKER.failureThreshold ? 'circuit-open' : 'cooldown';
+        slot.status =
+            slot.failureCount >= CIRCUIT_BREAKER.failureThreshold ? 'circuit-open' : 'cooldown';
     }
     markSlotSuccess(slot) {
         slot.failureCount = 0;
@@ -347,7 +374,8 @@ export class ModelRouter {
             const normalized = this.normalizePath(path);
             if (req.method === 'GET' && (normalized === '/v1/models' || path === '/v1/models'))
                 return this.handleModels(res);
-            if (req.method === 'POST' && (normalized === '/v1/chat/completions' || path === '/v1/chat/completions'))
+            if (req.method === 'POST' &&
+                (normalized === '/v1/chat/completions' || path === '/v1/chat/completions'))
                 return this.handleChatCompletion(req, res);
             if (req.method === 'GET' && path === '/api/health')
                 return this.respondJson(res, 200, this.getHealth());
@@ -439,11 +467,11 @@ export class ModelRouter {
         const resolvedModel = this.resolveModel(requestedModel);
         // ── Session management (inspired by OmniRoute's sessionManager.ts) ──
         // Extract session ID from multiple header variants (OmniRoute pattern)
-        const extSessionId = this.extractHeader(clientHeaders, 'x-session-id')
-            || this.extractHeader(clientHeaders, 'x-session-affinity')
-            || this.extractHeader(clientHeaders, 'x_session_id')
-            || this.extractHeader(clientHeaders, 'x-omniroute-session')
-            || this.extractHeader(clientHeaders, 'session-id');
+        const extSessionId = this.extractHeader(clientHeaders, 'x-session-id') ||
+            this.extractHeader(clientHeaders, 'x-session-affinity') ||
+            this.extractHeader(clientHeaders, 'x_session_id') ||
+            this.extractHeader(clientHeaders, 'x-omniroute-session') ||
+            this.extractHeader(clientHeaders, 'session-id');
         const sessionId = extSessionId
             ? `ext:${extSessionId.trim().slice(0, 64)}`
             : this.sessionManager.generateId(body, undefined, resolvedModel?.includes('/') ? resolvedModel.split('/')[0] : 'model-router');
@@ -451,7 +479,9 @@ export class ModelRouter {
         const affinitySlotId = this.sessionManager.getSlotAffinity(sessionId);
         const resolvedEntries = this.resolveModelEntries(resolvedModel);
         if (resolvedEntries.length === 0) {
-            return this.respondJson(res, 400, { error: { message: `No provider for model: ${requestedModel}`, type: 'invalid_model' } });
+            return this.respondJson(res, 400, {
+                error: { message: `No provider for model: ${requestedModel}`, type: 'invalid_model' },
+            });
         }
         const isStream = body.stream === true;
         // ── Thinking model injection (from OmniRoute) ──
@@ -497,7 +527,7 @@ export class ModelRouter {
                     responseContent = streamingResult.content;
                 }
                 else {
-                    tokensOut = (result.usage?.completion_tokens || 0);
+                    tokensOut = result.usage?.completion_tokens || 0;
                     responseContent = result?.choices?.[0]?.message?.content || '';
                     this.respondJson(res, 200, result);
                 }
@@ -545,7 +575,9 @@ export class ModelRouter {
                 console.warn(`[ModelRouter] ${slot.cfg.id} failed (${slot.failureCount}x): ${errorMessage}`);
                 // For free tier 401/model-not-supported: skip slot silently and try next
                 const isFreeSlot = slot.cfg.tier === 'opencode-free';
-                const isRateLimitOrAuth = errorMessage.includes('429') || errorMessage.includes('401') || errorMessage.includes('model not supported');
+                const isRateLimitOrAuth = errorMessage.includes('429') ||
+                    errorMessage.includes('401') ||
+                    errorMessage.includes('model not supported');
                 if (isFreeSlot && isRateLimitOrAuth) {
                     continue;
                 }
@@ -691,7 +723,9 @@ export class ModelRouter {
         }
         const upstreamBody = { ...body, model, stream: isStream };
         // Strip any provider prefix (openai/, model-router/, etc.)
-        if (upstreamBody.model && typeof upstreamBody.model === 'string' && upstreamBody.model.includes('/')) {
+        if (upstreamBody.model &&
+            typeof upstreamBody.model === 'string' &&
+            upstreamBody.model.includes('/')) {
             const parts = upstreamBody.model.split('/');
             upstreamBody.model = parts.slice(1).join('/');
         }
@@ -731,7 +765,7 @@ export class ModelRouter {
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
+            Connection: 'keep-alive',
             'X-Accel-Buffering': 'no',
         });
         if (!upstreamRes.body) {
@@ -774,7 +808,9 @@ export class ModelRouter {
                                 explicitTokensOut = parsed.usage.completion_tokens;
                             }
                         }
-                        catch { /* skip malformed SSE */ }
+                        catch {
+                            /* skip malformed SSE */
+                        }
                     }
                 }
                 res.write(value);
@@ -796,7 +832,13 @@ export class ModelRouter {
         return { tokensOut, content };
     }
     recordModelStat(model, tokensIn, tokensOut, success, ts) {
-        const existing = this.modelStats.get(model) || { calls: 0, tokensIn: 0, tokensOut: 0, failures: 0, lastCallAt: null };
+        const existing = this.modelStats.get(model) || {
+            calls: 0,
+            tokensIn: 0,
+            tokensOut: 0,
+            failures: 0,
+            lastCallAt: null,
+        };
         existing.calls++;
         existing.tokensIn += tokensIn;
         existing.tokensOut += tokensOut;
@@ -812,7 +854,8 @@ export class ModelRouter {
         }
     }
     handleResetSlot(req, res) {
-        this.readBody(req).then((body) => {
+        this.readBody(req)
+            .then((body) => {
             const slotId = body.slotId;
             const slot = this.slots.find((s) => s.cfg.id === slotId);
             if (!slot) {
@@ -824,7 +867,8 @@ export class ModelRouter {
             slot.lastError = null;
             console.log(`[ModelRouter] Reset slot ${slotId}`);
             this.respondJson(res, 200, { ok: true, slotId });
-        }).catch((err) => {
+        })
+            .catch((err) => {
             this.respondJson(res, 400, { error: `Invalid request body: ${err.message}` });
         });
     }
@@ -850,11 +894,15 @@ export class ModelRouter {
             providers: {
                 'opencode-free': {
                     slots: this.slots.filter((s) => s.cfg.tier === 'opencode-free').length,
-                    active: this.slots.filter((s) => s.cfg.tier === 'opencode-free' && s.status === 'active' && s.cooldownUntil <= Date.now()).length,
+                    active: this.slots.filter((s) => s.cfg.tier === 'opencode-free' &&
+                        s.status === 'active' &&
+                        s.cooldownUntil <= Date.now()).length,
                 },
                 'opencode-zen': {
                     slots: this.slots.filter((s) => s.cfg.tier === 'opencode-zen').length,
-                    active: this.slots.filter((s) => s.cfg.tier === 'opencode-zen' && s.status === 'active' && s.cooldownUntil <= Date.now()).length,
+                    active: this.slots.filter((s) => s.cfg.tier === 'opencode-zen' &&
+                        s.status === 'active' &&
+                        s.cooldownUntil <= Date.now()).length,
                     configured: !!this.zenApiKey,
                 },
                 openrouter: {
@@ -870,9 +918,12 @@ export class ModelRouter {
         for (const tier of ['opencode-free', 'opencode-zen', 'openrouter']) {
             const tierSlots = this.slots.filter((s) => s.cfg.tier === tier);
             providers[tier] = {
-                status: tierSlots.some((s) => s.status === 'active' && s.cooldownUntil <= Date.now()) ? 'active' : 'down',
+                status: tierSlots.some((s) => s.status === 'active' && s.cooldownUntil <= Date.now())
+                    ? 'active'
+                    : 'down',
                 totalSlots: tierSlots.length,
-                activeSlots: tierSlots.filter((s) => s.status === 'active' && s.cooldownUntil <= Date.now()).length,
+                activeSlots: tierSlots.filter((s) => s.status === 'active' && s.cooldownUntil <= Date.now())
+                    .length,
                 cooldownSlots: tierSlots.filter((s) => s.cooldownUntil > Date.now()).length,
                 circuitOpenSlots: tierSlots.filter((s) => s.status === 'circuit-open').length,
                 totalCalls: tierSlots.reduce((sum, s) => sum + s.totalCalls, 0),
@@ -910,7 +961,9 @@ export class ModelRouter {
         return {
             totalRequests: this.totalRequests,
             totalFailures: this.totalFailures,
-            successRate: this.totalRequests > 0 ? parseFloat(((this.totalRequests - this.totalFailures) / this.totalRequests * 100).toFixed(1)) : null,
+            successRate: this.totalRequests > 0
+                ? parseFloat((((this.totalRequests - this.totalFailures) / this.totalRequests) * 100).toFixed(1))
+                : null,
             recent5m: {
                 requests: recentLogs.length,
                 successes: recentSuccess.length,
@@ -923,19 +976,37 @@ export class ModelRouter {
             },
             byTier: {
                 'opencode-free': {
-                    calls: this.slots.filter((s) => s.cfg.tier === 'opencode-free').reduce((sum, s) => sum + s.totalCalls, 0),
-                    tokensIn: this.slots.filter((s) => s.cfg.tier === 'opencode-free').reduce((sum, s) => sum + s.totalTokensIn, 0),
-                    tokensOut: this.slots.filter((s) => s.cfg.tier === 'opencode-free').reduce((sum, s) => sum + s.totalTokensOut, 0),
+                    calls: this.slots
+                        .filter((s) => s.cfg.tier === 'opencode-free')
+                        .reduce((sum, s) => sum + s.totalCalls, 0),
+                    tokensIn: this.slots
+                        .filter((s) => s.cfg.tier === 'opencode-free')
+                        .reduce((sum, s) => sum + s.totalTokensIn, 0),
+                    tokensOut: this.slots
+                        .filter((s) => s.cfg.tier === 'opencode-free')
+                        .reduce((sum, s) => sum + s.totalTokensOut, 0),
                 },
                 'opencode-zen': {
-                    calls: this.slots.filter((s) => s.cfg.tier === 'opencode-zen').reduce((sum, s) => sum + s.totalCalls, 0),
-                    tokensIn: this.slots.filter((s) => s.cfg.tier === 'opencode-zen').reduce((sum, s) => sum + s.totalTokensIn, 0),
-                    tokensOut: this.slots.filter((s) => s.cfg.tier === 'opencode-zen').reduce((sum, s) => sum + s.totalTokensOut, 0),
+                    calls: this.slots
+                        .filter((s) => s.cfg.tier === 'opencode-zen')
+                        .reduce((sum, s) => sum + s.totalCalls, 0),
+                    tokensIn: this.slots
+                        .filter((s) => s.cfg.tier === 'opencode-zen')
+                        .reduce((sum, s) => sum + s.totalTokensIn, 0),
+                    tokensOut: this.slots
+                        .filter((s) => s.cfg.tier === 'opencode-zen')
+                        .reduce((sum, s) => sum + s.totalTokensOut, 0),
                 },
                 openrouter: {
-                    calls: this.slots.filter((s) => s.cfg.tier === 'openrouter').reduce((sum, s) => sum + s.totalCalls, 0),
-                    tokensIn: this.slots.filter((s) => s.cfg.tier === 'openrouter').reduce((sum, s) => sum + s.totalTokensIn, 0),
-                    tokensOut: this.slots.filter((s) => s.cfg.tier === 'openrouter').reduce((sum, s) => sum + s.totalTokensOut, 0),
+                    calls: this.slots
+                        .filter((s) => s.cfg.tier === 'openrouter')
+                        .reduce((sum, s) => sum + s.totalCalls, 0),
+                    tokensIn: this.slots
+                        .filter((s) => s.cfg.tier === 'openrouter')
+                        .reduce((sum, s) => sum + s.totalTokensIn, 0),
+                    tokensOut: this.slots
+                        .filter((s) => s.cfg.tier === 'openrouter')
+                        .reduce((sum, s) => sum + s.totalTokensOut, 0),
                 },
             },
             perModel: Object.fromEntries(this.modelStats.entries()),
@@ -948,7 +1019,11 @@ export class ModelRouter {
         };
     }
     getModelDetails() {
-        return { tiers: TIER_MODELS, aliases: MODEL_ALIASES, stats: Object.fromEntries(this.modelStats.entries()) };
+        return {
+            tiers: TIER_MODELS,
+            aliases: MODEL_ALIASES,
+            stats: Object.fromEntries(this.modelStats.entries()),
+        };
     }
     /**
      * Push a model call event to the dashboard telemetry store.

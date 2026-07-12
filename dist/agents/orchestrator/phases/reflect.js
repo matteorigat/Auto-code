@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { TierSelector } from '../../../src/core/tier-selector.js';
 export async function handleReflect(context) {
@@ -9,6 +9,7 @@ export async function handleReflect(context) {
     const tasksArray = tasks._tasks;
     const task = tasksArray?.find((t) => String(t.id) === String(taskId));
     const ws = task?.workspacePath || projectPath;
+    const currentStory = state.get()?.currentStory;
     updateStatus({ phase: 'REFLECT', taskTitle: `[${taskId}] Preparing retrospective analysis...`, taskId });
     log('[REFLECT] extracting reusable skills');
     try {
@@ -18,7 +19,7 @@ export async function handleReflect(context) {
             timeout: 10000,
         }).toString();
         if (!diff.trim()) {
-            log('[REFLECT] no diff found, skipping');
+            log('[REFLECT] no diff found, skipping skill extraction');
         }
         else {
             updateStatus({ phase: 'REFLECT', taskTitle: `[${taskId}] Mining reusable skills with skill-extractor...`, taskId });
@@ -26,8 +27,11 @@ export async function handleReflect(context) {
             const tier = tierSelector.select('REFLECT');
             tierSelector.applyTierConfig(tier, projectPath);
             const agent = new AgentRuntime({ projectPath, agentType: 'skill-extractor', safety, stream });
-            const currentStory = state.get()?.currentStory;
-            agent.task = { title: currentStory, description: diff };
+            // F4: Pass meaningful task title (not "Fix QA Error") so skill-extractor has context
+            agent.task = {
+                title: currentStory || `Task ${taskId}`,
+                description: `Analyze this git diff and extract reusable engineering patterns:\n\n${diff.slice(0, 8000)}`,
+            };
             const result = await agent.run(120000);
             if (result.ok &&
                 (result.content ||
@@ -36,20 +40,41 @@ export async function handleReflect(context) {
                     result.result?.info?.content ||
                     '';
                 if (!skillContent.includes('NO_SKILL') && skillContent.length > 50) {
-                    const skillsDir = join(projectPath, '.hydra', 'skills');
+                    const skillsDir = join(ws, '.hydra', 'skills');
                     if (!existsSync(skillsDir))
                         mkdirSync(skillsDir, { recursive: true });
-                    const titleMatch = skillContent.match(/^#\\s+(.+)$/m);
+                    // F4: Fix regex — was /^#\\s+(.+)$/m (wrong double backslash), now correctly /^#\s+(.+)$/m
+                    const titleMatch = skillContent.match(/SKILL_TITLE:\s*(.+)/) ||
+                        skillContent.match(/^#\s+(.+)$/m);
                     let safeTitle = taskId || 'unknown';
+                    let skillTitle = '';
                     if (titleMatch) {
-                        safeTitle = titleMatch[1]
+                        skillTitle = titleMatch[1].trim();
+                        safeTitle = skillTitle
                             .toLowerCase()
                             .replace(/[^a-z0-9]+/g, '-')
                             .slice(0, 40);
                     }
                     const filename = `skill-${safeTitle}-${Date.now().toString(36)}.md`;
-                    writeFileSync(join(skillsDir, filename), skillContent, 'utf-8');
-                    log(`[REFLECT] extracted skill saved to ${filename}`);
+                    const skillFilePath = join(skillsDir, filename);
+                    writeFileSync(skillFilePath, skillContent, 'utf-8');
+                    log(`[REFLECT] Skill saved to ${filename}`);
+                    // F4: Append skill to AGENTS.md so the builder reads it in future runs
+                    const agentsMdPath = join(ws, 'AGENTS.md');
+                    try {
+                        const skillSummary = skillContent.slice(0, 800);
+                        const agentsEntry = `\n\n---\n\n## Extracted Skill: ${skillTitle || safeTitle}\n*Extracted after task: ${currentStory || taskId}*\n\n${skillSummary}`;
+                        if (existsSync(agentsMdPath)) {
+                            appendFileSync(agentsMdPath, agentsEntry, 'utf-8');
+                        }
+                        else {
+                            writeFileSync(agentsMdPath, `# AGENTS.md — Project Patterns & Skills\n${agentsEntry}`, 'utf-8');
+                        }
+                        log(`[REFLECT] Appended skill to AGENTS.md`);
+                    }
+                    catch (appendErr) {
+                        log(`[REFLECT] Failed to append skill to AGENTS.md: ${appendErr.message}`);
+                    }
                 }
                 else {
                     log('[REFLECT] task deemed trivial, no skill extracted');

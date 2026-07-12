@@ -314,4 +314,3 @@ export class Safety {
         };
     }
 }
-export default Safety;

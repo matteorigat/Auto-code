@@ -65,7 +65,8 @@ const config = {
     },
     modelRouter: {
         port: parseNum(process.env.MODELROUTER_PORT, 20128),
-        url: process.env.MODELROUTER_URL || `http://127.0.0.1:${parseNum(process.env.MODELROUTER_PORT, 20128)}`,
+        url: process.env.MODELROUTER_URL ||
+            `http://127.0.0.1:${parseNum(process.env.MODELROUTER_PORT, 20128)}`,
         opencodeZenApiKey: process.env.OPENCODE_ZEN_API_KEY || process.env.OPENCODE_API_KEY,
         openrouterApiKey: process.env.OPENROUTER_API_KEY,
     },

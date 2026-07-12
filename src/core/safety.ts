@@ -1,5 +1,5 @@
 import { execFileSync, type ExecSyncOptions } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import config from '../config/index.js';
 import { getAppBus } from './app-bus.js';
@@ -371,5 +371,3 @@ export class Safety {
     };
   }
 }
-
-export default Safety;

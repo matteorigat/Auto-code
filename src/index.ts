@@ -2,7 +2,6 @@
 import { join } from 'node:path';
 import config from './config/index.js';
 
-import { getDockerController } from './services/docker-sandbox.js';
 import { getAppBus } from './core/app-bus.js';
 import { ProcessManager } from './services/process-manager.js';
 import { BridgeBot, ChatState } from './bot/telegram-bot.js';
@@ -65,16 +64,16 @@ opencodeClient.eventBus.on('event', (evt) => {
 
 // Periodically send health status to dashboard
 const HEALTH_PING_INTERVAL = setInterval(() => {
-    telemetry.healthPing({
-      'model-router': { running: true },
-      opencode: processManager.healthOk
-        ? { running: true }
-        : { running: false, restartDelay: processManager.opencodeRestartDelay },
-      loop: loopManager.childProc
-        ? { running: true, phase: loopManager.currentPhase }
-        : { running: false },
-      bridge: { uptime: Math.floor((Date.now() - processManager.startupTime) / 1000) },
-    });
+  telemetry.healthPing({
+    'model-router': { running: true },
+    opencode: processManager.healthOk
+      ? { running: true }
+      : { running: false, restartDelay: processManager.opencodeRestartDelay },
+    loop: loopManager.childProc
+      ? { running: true, phase: loopManager.currentPhase }
+      : { running: false },
+    bridge: { uptime: Math.floor((Date.now() - processManager.startupTime) / 1000) },
+  });
 }, 5000);
 HEALTH_PING_INTERVAL.unref();
 
@@ -129,7 +128,6 @@ dashboardServer.start();
     telemetry.emit(type, source, message, data);
   });
 
-  const projectPath = process.argv[2] || process.cwd();
   const ok = await processManager.waitForHealth(10);
   if (ok) {
     console.log('✅ opencode pronto. Starting poll...');

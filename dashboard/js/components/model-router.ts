@@ -51,10 +51,24 @@ function kpi(label: string, value: string, sub: string, color: string): string {
 export function mountModelRouter(container: HTMLElement, state: any, api: any) {
   container.innerHTML = `
     <!-- KPI row -->
-    <div id="mr-kpis" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3"></div>
+    <div id="mr-kpis" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-6"></div>
+
+    <!-- Proxy Control Panel -->
+    <div id="mr-proxy-panel" class="glass-panel p-5 mb-6 hidden">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <h3 class="text-sm font-semibold text-zinc-200">Proxy Manager</h3>
+          <span id="proxy-strategy-badge" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold"></span>
+        </div>
+        <button id="btn-force-rotate-proxy" class="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white rounded text-xs font-semibold border border-zinc-700 transition flex items-center gap-1">
+          <span class="rotate-icon">↻</span> Force IP Rotation
+        </button>
+      </div>
+      <div id="proxy-list" class="mt-4 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2"></div>
+    </div>
 
     <!-- Accounts / Slots Grid -->
-    <div class="glass-panel p-5">
+    <div class="glass-panel p-5 mb-6">
       <div class="flex items-center justify-between mb-4">
         <div>
           <h3 class="text-sm font-semibold text-zinc-200">Account Slots</h3>
@@ -96,11 +110,31 @@ export function mountModelRouter(container: HTMLElement, state: any, api: any) {
 
   const kpisEl = container.querySelector('#mr-kpis');
   const gridEl = container.querySelector('#mr-accounts-grid');
+  const proxyPanelEl = container.querySelector('#mr-proxy-panel');
+  const proxyStrategyBadge = container.querySelector('#proxy-strategy-badge');
+  const proxyListEl = container.querySelector('#proxy-list');
+  const forceRotateBtn = container.querySelector('#btn-force-rotate-proxy');
   const perModelEl = container.querySelector('#mr-per-model');
   const recentLogEl = container.querySelector('#mr-recent-log');
   const filterBtns = container.querySelector('#mr-filter-btns');
 
   let activeFilter = 'all';
+
+  forceRotateBtn?.addEventListener('click', async () => {
+    forceRotateBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    (forceRotateBtn.querySelector('.rotate-icon') as HTMLElement).classList.add('animate-spin');
+    try {
+      await api.post('/model-router/proxy-rotate', {});
+      // Visual feedback
+      const originalText = forceRotateBtn.innerHTML;
+      forceRotateBtn.innerHTML = '<span class="text-success">✓ Rotated</span>';
+      setTimeout(() => { forceRotateBtn.innerHTML = originalText; forceRotateBtn.classList.remove('opacity-50', 'cursor-not-allowed'); }, 2000);
+    } catch (e) {
+      alert('Failed to rotate proxy: ' + e.message);
+      forceRotateBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      (forceRotateBtn.querySelector('.rotate-icon') as HTMLElement).classList.remove('animate-spin');
+    }
+  });
 
   filterBtns?.addEventListener('click', (e: Event) => {
     const btn = (e.target as HTMLElement).closest('[data-filter]') as HTMLElement | null;
@@ -288,13 +322,53 @@ export function mountModelRouter(container: HTMLElement, state: any, api: any) {
     </table>`;
   }
 
-  const update = () => {
+    const update = () => {
     if (state.activeTab !== 'model-router') return;
     renderKPIs();
+    renderProxyPanel();
     renderAccounts();
     renderPerModel();
     renderRecentLog();
   };
+
+  function renderProxyPanel() {
+    const proxyStatus = state.modelRouterProxyStatus;
+    if (!proxyStatus || proxyStatus.strategy === 'none' || proxyStatus.strategy === 'unknown') {
+      proxyPanelEl?.classList.add('hidden');
+      return;
+    }
+    proxyPanelEl?.classList.remove('hidden');
+
+    const isTor = proxyStatus.strategy === 'tor';
+    proxyStrategyBadge!.className = \`px-2 py-0.5 rounded text-[10px] font-mono font-bold \${isTor ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-accentBlue/20 text-accentBlue border border-accentBlue/30'}\`;
+    proxyStrategyBadge!.textContent = proxyStatus.strategy.toUpperCase();
+
+    if (!proxyStatus.proxies || proxyStatus.proxies.length === 0) {
+      proxyListEl!.innerHTML = '<div class="text-zinc-600 text-xs py-2 text-center col-span-full">No active proxies.</div>';
+      return;
+    }
+
+    proxyListEl!.innerHTML = proxyStatus.proxies.map((p: any) => {
+      const isHealthy = p.healthy;
+      const color = isHealthy ? 'text-success' : 'text-danger';
+      const border = isHealthy ? 'border-success/20 bg-success/[0.02]' : 'border-danger/20 bg-danger/[0.02]';
+      const indicator = isHealthy ? 'bg-success' : 'bg-danger';
+      
+      return \`<div class="rounded border \${border} p-2 relative flex flex-col justify-between">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-[9px] font-mono text-zinc-400">Idx: \${p.index}</span>
+          <span class="w-1.5 h-1.5 rounded-full \${indicator}"></span>
+        </div>
+        <div class="text-[10px] font-mono text-zinc-300 truncate font-semibold" title="\${p.url}">
+          \${p.url}
+        </div>
+        <div class="text-[9px] font-mono text-zinc-500 mt-1 flex justify-between">
+          <span>IP: <span class="\${p.lastIp ? 'text-zinc-300' : 'text-zinc-600'}">\${p.lastIp || 'unknown'}</span></span>
+          <span class="\${p.failCount > 0 ? 'text-warning' : ''}">Fails: \${p.failCount}</span>
+        </div>
+      </div>\`;
+    }).join('');
+  }
 
   state.subscribe(update);
   update();

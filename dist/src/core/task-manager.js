@@ -168,9 +168,7 @@ export class TaskManager {
                     explicitDeps = [String(explicitDeps)];
                 }
                 // Filter out any dependencies that do not belong to the same project
-                const deps = new Set(explicitDeps
-                    .map(String)
-                    .filter((depId) => {
+                const deps = new Set(explicitDeps.map(String).filter((depId) => {
                     const depTask = stories.find((t) => String(t.id) === depId);
                     if (!depTask)
                         return false;
@@ -180,9 +178,7 @@ export class TaskManager {
                 }));
                 if (deps.size === 0 && isUI(s)) {
                     for (const other of stories) {
-                        if (other.id !== s.id &&
-                            other._projectSlug === s._projectSlug &&
-                            isInfra(other)) {
+                        if (other.id !== s.id && other._projectSlug === s._projectSlug && isInfra(other)) {
                             deps.add(String(other.id));
                         }
                     }
@@ -433,4 +429,3 @@ export class TaskManager {
         return s?._projectSlug || null;
     }
 }
-export default TaskManager;

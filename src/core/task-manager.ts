@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import { NotionAdapter, NotionTask } from './notion-adapter.js';
 
 export interface Story {
@@ -223,29 +223,23 @@ export class TaskManager {
         if (!Array.isArray(explicitDeps)) {
           explicitDeps = [String(explicitDeps)];
         }
-        
+
         // Filter out any dependencies that do not belong to the same project
         const deps = new Set(
-          explicitDeps
-            .map(String)
-            .filter((depId) => {
-              const depTask = stories.find((t) => String(t.id) === depId);
-              if (!depTask) return false;
-              return (
-                depTask._projectSlug === s._projectSlug ||
-                depTask._projectSlug === null ||
-                s._projectSlug === null
-              );
-            })
+          explicitDeps.map(String).filter((depId) => {
+            const depTask = stories.find((t) => String(t.id) === depId);
+            if (!depTask) return false;
+            return (
+              depTask._projectSlug === s._projectSlug ||
+              depTask._projectSlug === null ||
+              s._projectSlug === null
+            );
+          }),
         );
 
         if (deps.size === 0 && isUI(s)) {
           for (const other of stories) {
-            if (
-              other.id !== s.id &&
-              other._projectSlug === s._projectSlug &&
-              isInfra(other)
-            ) {
+            if (other.id !== s.id && other._projectSlug === s._projectSlug && isInfra(other)) {
               deps.add(String(other.id));
             }
           }
@@ -527,5 +521,3 @@ export class TaskManager {
     return s?._projectSlug || null;
   }
 }
-
-export default TaskManager;

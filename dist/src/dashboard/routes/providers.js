@@ -7,7 +7,9 @@ async function proxyModelRouter(path) {
         if (r.ok)
             return (await r.json());
     }
-    catch { /* ModelRouter unavailable */ }
+    catch {
+        /* ModelRouter unavailable */
+    }
     return null;
 }
 export function createProvidersRouter({ config, collector, telemetryStore }) {

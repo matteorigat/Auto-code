@@ -20,12 +20,23 @@ export async function handleCommit(context) {
     }
     try {
         updateStatus({ phase: 'COMMIT', taskTitle: `[${taskId}] Committing code changes: "${state.get()?.currentStory}"...`, taskId });
-        execFileSync('git', ['add', '-A'], { cwd: ws, timeout: 15000 });
-        execFileSync('git', ['commit', '-m', `feat(${taskId}): ${state.get()?.currentStory}`], {
-            cwd: ws,
-            timeout: 15000,
-        });
-        log(`[COMMIT] Committed feat(${taskId}): ${state.get()?.currentStory} on task branch`);
+        // B5: Check if there are actual changes before committing
+        let porcelain = '';
+        try {
+            porcelain = execFileSync('git', ['status', '--porcelain'], { cwd: ws, timeout: 10000 }).toString().trim();
+        }
+        catch (_) { }
+        if (!porcelain) {
+            log(`[COMMIT] WARNING: No file changes detected (git status --porcelain is empty). Builder may not have written any files. Skipping commit.`);
+        }
+        else {
+            execFileSync('git', ['add', '-A'], { cwd: ws, timeout: 15000 });
+            execFileSync('git', ['commit', '-m', `feat(${taskId}): ${state.get()?.currentStory}`], {
+                cwd: ws,
+                timeout: 15000,
+            });
+            log(`[COMMIT] Committed feat(${taskId}): ${state.get()?.currentStory} on task branch`);
+        }
     }
     catch (e) {
         log(`[COMMIT] Error — git commit on branch failed: ${e.message}`);

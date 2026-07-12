@@ -1,8 +1,119 @@
 import { basename, join } from 'node:path';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { TaskManager } from '../../../src/core/task-manager.js';
 import { TierSelector } from '../../../src/core/tier-selector.js';
 import { AgentRuntime } from '../../runtime.js';
+/**
+ * PRIMARY: Try to parse stories from the project-planner's prd.json output.
+ * The project-planner is now instructed to write prd.json directly with full AC.
+ * Falls back to content parsing if prd.json isn't parseable.
+ */
+function parseStoriesFromJson(content) {
+    // Look for a JSON block in the content (project-planner may output it inline)
+    const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) ||
+        content.match(/\{[\s\S]*"stories"[\s\S]*\}/);
+    if (!jsonMatch)
+        return null;
+    try {
+        const raw = jsonMatch[1] || jsonMatch[0];
+        const parsed = JSON.parse(raw);
+        const stories = parsed.stories || parsed;
+        if (!Array.isArray(stories))
+            return null;
+        return stories
+            .filter((s) => s.title || s.name)
+            .map((s) => ({
+            title: String(s.title || s.name || '').trim(),
+            description: String(s.description || '').trim(),
+            acceptanceCriteria: Array.isArray(s.acceptanceCriteria)
+                ? s.acceptanceCriteria.map(String)
+                : [],
+        }))
+            .filter((s) => s.title.length > 5);
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * SECONDARY: Extract stories from PLAN.md task sections.
+ * Parses task blocks that contain: title, description, and AC bullet lists.
+ * Accepts numbered (1.), bullet (- * •), or heading (## ###) formats.
+ */
+function extractStoriesFromContent(content) {
+    const seen = new Set();
+    const stories = [];
+    // Split on task/story boundaries: ## Task N, ### Story N, \n---\n, \n\n---\n
+    // Also split on numbered headers like "1. Title\n"
+    const taskBlocks = content.split(/(?=^#{2,3}\s+(?:Task|Story|US-|\d+))/m);
+    for (const block of taskBlocks) {
+        const lines = block.split('\n').map((l) => l.trim());
+        if (lines.length < 2)
+            continue;
+        // Extract title from first non-empty line
+        let title = '';
+        let titleLineIdx = -1;
+        for (let i = 0; i < Math.min(lines.length, 5); i++) {
+            const l = lines[i];
+            const headingMatch = l.match(/^#{1,4}\s+(?:Task\s+\d+[:.]\s*)?(.+)$/);
+            const numberedMatch = l.match(/^\d+[.)]\s+(.+)$/);
+            const bulletMatch = l.match(/^[-*•]\s+(.+)$/);
+            const candidate = headingMatch?.[1] || numberedMatch?.[1] || bulletMatch?.[1];
+            if (candidate && candidate.length > 5 && candidate.length < 200) {
+                title = candidate.trim();
+                titleLineIdx = i;
+                break;
+            }
+        }
+        if (!title || seen.has(title))
+            continue;
+        // Extract description: first paragraph after title
+        let description = '';
+        let acStart = -1;
+        for (let i = titleLineIdx + 1; i < lines.length; i++) {
+            const l = lines[i];
+            if (!l)
+                continue;
+            // AC section keywords
+            if (/^(?:acceptance\s*criteria|ac:|criteria:|tests?:|requirements?:)/i.test(l)) {
+                acStart = i + 1;
+                break;
+            }
+            if (!description && l.length > 10 && !l.startsWith('#')) {
+                description = l;
+            }
+        }
+        // Extract AC items
+        const acceptanceCriteria = [];
+        const acLines = acStart >= 0 ? lines.slice(acStart) : lines.slice(titleLineIdx + 1);
+        for (const l of acLines) {
+            // Stop at next section boundary
+            if (/^#{1,4}\s/.test(l) || /^---+$/.test(l))
+                break;
+            const bulletMatch = l.match(/^[-*•✓☑]\s+(.+)$/) || l.match(/^\d+[.)]\s+(.+)$/);
+            if (bulletMatch && bulletMatch[1].length > 5) {
+                acceptanceCriteria.push(bulletMatch[1].trim());
+            }
+        }
+        seen.add(title);
+        stories.push({ title, description, acceptanceCriteria });
+    }
+    // Fallback: simple line-by-line extraction if block parsing yielded nothing
+    if (stories.length === 0) {
+        for (const raw of content.split('\n')) {
+            const line = raw.trim();
+            let title = '';
+            const m = line.match(/^(?:\d+[.)]\s+|[-*•]\s+|#{2,4}\s+)(.+)$/);
+            if (m)
+                title = m[1].trim();
+            if (title && title.length > 5 && title.length < 200 && !seen.has(title)) {
+                seen.add(title);
+                stories.push({ title, description: '', acceptanceCriteria: [] });
+            }
+        }
+    }
+    return stories;
+}
 export async function handlePlan(context) {
     const { tasks, stream, log, updateStatus, projectPath, state, safety } = context;
     log(`[PLAN] Running PLAN phase...`);
@@ -50,12 +161,27 @@ export async function handlePlan(context) {
             const tierSelector = new TierSelector();
             const tier = tierSelector.select('PLAN');
             tierSelector.applyTierConfig(tier, projectDir);
+            // B6: Inject ideas.md content as task description so planner has full spec context
+            let ideasContent = '';
+            const ideasPath = join(projectDir, 'ideas.md');
+            try {
+                if (existsSync(ideasPath)) {
+                    ideasContent = readFileSync(ideasPath, 'utf-8').slice(0, 6000);
+                }
+            }
+            catch (_) { }
             const planner = new AgentRuntime({
                 projectPath: projectDir,
                 agentType: 'project-planner',
                 safety,
                 stream,
             });
+            planner.task = {
+                title: task.title || task._projectSlug || 'New Project',
+                description: ideasContent ||
+                    task.description ||
+                    `Project: ${task._projectSlug}. No ideas.md found — infer from project name.`,
+            };
             const planResult = await planner.run(600000);
             const planContent = planResult?.content || '';
             if (planContent) {
@@ -83,22 +209,40 @@ export async function handlePlan(context) {
                         }
                     }
                 }
+                // F1: Multi-format story extraction with AC (JSON primary, PLAN.md fallback)
                 updateStatus({ phase: 'PLAN', taskTitle: `[${task._projectSlug}] Decomposing tasks and saving backlog to prd.json...`, taskId: task.id });
-                const storyLines = planContent.match(/^\d+\.\s+.+/gm) || [];
-                const parsedStories = [];
-                for (const line of storyLines) {
-                    const title = line.replace(/^\d+\.\s+/, '').trim();
-                    if (title) {
-                        parsedStories.push({
+                // Try to read prd.json that the project-planner wrote directly (it's now instructed to do so)
+                let parsedStories = [];
+                let usedLocalPrd = false;
+                try {
+                    const localPrdRaw = readFileSync(join(projectDir, 'prd.json'), 'utf-8');
+                    const localPrd = JSON.parse(localPrdRaw);
+                    if (Array.isArray(localPrd.stories) && localPrd.stories.length > 0) {
+                        parsedStories = localPrd.stories;
+                        usedLocalPrd = true;
+                        log(`[PLAN] Using prd.json written directly by project-planner (${parsedStories.length} stories with AC).`);
+                    }
+                }
+                catch (_) { }
+                // Fallback: parse from planContent using structured extractor
+                if (!usedLocalPrd) {
+                    // Try JSON blocks first, then PLAN.md block parsing
+                    const jsonStories = parseStoriesFromJson(planContent);
+                    const structuredStories = jsonStories ?? extractStoriesFromContent(planContent);
+                    for (const s of structuredStories) {
+                        const storyData = {
                             id: `US-${Date.now().toString(36)}-${parsedStories.length + 1}`,
-                            title,
-                            description: '',
-                            acceptanceCriteria: [],
+                            title: s.title,
+                            description: s.description || '',
+                            acceptanceCriteria: s.acceptanceCriteria || [],
                             priority: 3,
                             status: 'idle',
                             passes: false,
-                        });
+                        };
+                        parsedStories.push(storyData);
                     }
+                    const acCount = parsedStories.filter((s) => (s.acceptanceCriteria?.length || 0) > 0).length;
+                    log(`[PLAN] Extracted ${parsedStories.length} stories from content (${acCount} with AC).`);
                 }
                 if (parsedStories.length > 0) {
                     const codebasePatterns = planContent.match(/## Technical[\s\S]*?(?=## |$)/)?.[0] || '';
@@ -112,6 +256,12 @@ export async function handlePlan(context) {
                     writeFileSync(join(projectDir, 'prd.json'), JSON.stringify(localPrdData, null, 2), 'utf-8');
                     log(`[PLAN] Written ${parsedStories.length} stories to ${task._projectSlug}/prd.json`);
                 }
+                else {
+                    log(`[PLAN] WARNING: project-planner returned 0 parseable stories. Content length: ${planContent.length}. Check project-planner output.`);
+                }
+            }
+            else {
+                log(`[PLAN] WARNING: project-planner returned empty content. Task: ${task.id}. Check LLM response.`);
             }
             // Sync stories back to root prd.json
             updateStatus({ phase: 'PLAN', taskTitle: `[${task._projectSlug}] Syncing project stories to root backlog...`, taskId: task.id });
@@ -167,18 +317,97 @@ export async function handlePlan(context) {
             stream,
             tasks: localTasks,
         });
-        await architect.run(300000);
-        updateStatus({ phase: 'PLAN', taskTitle: `[${task.id}] Reviewing technical plan with reviewer...`, taskId: task.id });
-        log(`[PLAN] [${task.id}] Running reviewer to review technical proposal`);
-        const reviewer = new AgentRuntime({
-            projectPath: projectDir,
-            agentType: 'reviewer',
-            task,
-            safety,
-            stream,
-            tasks: localTasks,
-        });
-        await reviewer.run(300000);
+        const architectResult = await architect.run(300000);
+        let architectProposal = architectResult?.content ||
+            architectResult?.result?.info?.content || '';
+        // F5: Reviewer gate — PROPOSAL REJECTED loops back to architect (max 2 cycles)
+        let reviewContent = '';
+        const MAX_REVIEW_CYCLES = 2;
+        for (let reviewCycle = 0; reviewCycle < MAX_REVIEW_CYCLES; reviewCycle++) {
+            updateStatus({ phase: 'PLAN', taskTitle: `[${task.id}] Reviewing technical plan (attempt ${reviewCycle + 1})...`, taskId: task.id });
+            log(`[PLAN] [${task.id}] Running reviewer (cycle ${reviewCycle + 1}/${MAX_REVIEW_CYCLES})`);
+            const reviewer = new AgentRuntime({
+                projectPath: projectDir,
+                agentType: 'reviewer',
+                task: {
+                    ...task,
+                    title: `Review Proposal: ${task.title}`,
+                    description: architectProposal
+                        ? `Review this technical proposal and provide feedback:\n\n${architectProposal.slice(0, 6000)}`
+                        : `Review the task: ${task.description || task.title}`,
+                },
+                safety,
+                stream,
+                tasks: localTasks,
+            });
+            const reviewerResult = await reviewer.run(300000);
+            reviewContent = reviewerResult?.content ||
+                reviewerResult?.result?.info?.content || '';
+            const isApproved = /PROPOSAL APPROVED|^APPROVED/im.test(reviewContent);
+            const isRejected = /PROPOSAL REJECTED|PROPOSAL BLOCKED/im.test(reviewContent);
+            if (isApproved) {
+                log(`[PLAN] [${task.id}] Reviewer APPROVED the technical proposal. Proceeding to CODE.`);
+                break;
+            }
+            else if (isRejected && reviewCycle < MAX_REVIEW_CYCLES - 1) {
+                // Extract rejection reason and re-run architect with the feedback
+                const rejectedReason = reviewContent.match(/PROPOSAL (?:REJECTED|BLOCKED):\s*(.+)/i)?.[1] || 'See reviewer feedback';
+                log(`[PLAN] [${task.id}] Reviewer REJECTED proposal: ${rejectedReason}. Re-running architect with feedback.`);
+                updateStatus({ phase: 'PLAN', taskTitle: `[${task.id}] Revising architecture based on reviewer feedback...`, taskId: task.id });
+                const revisedArchitect = new AgentRuntime({
+                    projectPath: projectDir,
+                    agentType: 'architect',
+                    task: {
+                        ...task,
+                        description: `${task.description || ''}\n\nIMPORTANT: Your previous proposal was rejected by the reviewer. Rejection reason: ${rejectedReason}\n\nReviewer feedback:\n${reviewContent.slice(0, 3000)}\n\nRevise your proposal to address all issues.`,
+                    },
+                    safety,
+                    stream,
+                    tasks: localTasks,
+                });
+                const revisedResult = await revisedArchitect.run(300000);
+                architectProposal = revisedResult?.content ||
+                    revisedResult?.result?.info?.content || architectProposal;
+            }
+            else if (isRejected) {
+                // Max cycles exhausted — escalate to WAIT_HUMAN
+                log(`[PLAN] [${task.id}] ESCALATING: architect/reviewer could not reach consensus after ${MAX_REVIEW_CYCLES} cycles.`);
+                stream.emit('System', 'system', {
+                    action: 'PhaseChange',
+                    phase: 'WAIT_HUMAN',
+                    stateUpdates: {
+                        humanGateReason: `Architecture could not be agreed upon for task "${task.title}". Reason: ${reviewContent.slice(0, 300)}`,
+                        resumeTarget: 'PLAN',
+                    },
+                });
+                return;
+            }
+            else {
+                // No clear verdict — treat as approved with a warning
+                log(`[PLAN] [${task.id}] Reviewer did not output a clear verdict. Treating as approved with caution.`);
+                break;
+            }
+        }
+        // Save architect proposal + reviewer feedback to disk so builder can read it
+        if (architectProposal || reviewContent) {
+            try {
+                const hydraDir = join(projectDir, '.hydra');
+                if (!existsSync(hydraDir))
+                    mkdirSync(hydraDir, { recursive: true });
+                const reviewFilePath = join(hydraDir, `review-${task.id}.md`);
+                const reviewDoc = [
+                    `# Technical Plan — ${task.title}`,
+                    '',
+                    architectProposal ? `## Architect Proposal\n\n${architectProposal}` : '',
+                    reviewContent ? `## Reviewer Feedback\n\n${reviewContent}` : '',
+                ].filter(Boolean).join('\n\n');
+                writeFileSync(reviewFilePath, reviewDoc, 'utf-8');
+                log(`[PLAN] [${task.id}] Saved architect+reviewer output to .hydra/review-${task.id}.md`);
+            }
+            catch (err) {
+                log(`[PLAN] [${task.id}] Failed to save review file: ${err.message}`);
+            }
+        }
         tasksToExec.push(task.id);
     }
     stream.emit('System', 'system', {

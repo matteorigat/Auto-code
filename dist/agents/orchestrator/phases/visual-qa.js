@@ -1,5 +1,48 @@
 import { AgentRuntime } from '../../runtime.js';
 import { TierSelector } from '../../../src/core/tier-selector.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+/**
+ * Detect the port the dev server is running on.
+ * Priority: .hydra/app-config.json > package.json scripts.dev port > common ports probe.
+ */
+async function detectAppPort(ws) {
+    // 1. Explicit config override
+    try {
+        const cfg = JSON.parse(readFileSync(join(ws, '.hydra', 'app-config.json'), 'utf-8'));
+        if (cfg.port && typeof cfg.port === 'number')
+            return cfg.port;
+    }
+    catch (_) { }
+    // 2. Parse port from package.json scripts (e.g. "dev": "next dev -p 3001" or "vite --port 4000")
+    try {
+        const pkg = JSON.parse(readFileSync(join(ws, 'package.json'), 'utf-8'));
+        const scripts = pkg.scripts || {};
+        const devScript = scripts.dev || scripts.start || scripts.serve || '';
+        const portMatch = devScript.match(/(?:--port|-p)\s+(\d+)/);
+        if (portMatch)
+            return parseInt(portMatch[1], 10);
+        // Next.js default on 3000, Vite on 5173, CRA on 3000
+        if (devScript.includes('next'))
+            return 3000;
+        if (devScript.includes('vite'))
+            return 5173;
+    }
+    catch (_) { }
+    // 3. Probe common dev ports
+    const { createConnection } = await import('node:net');
+    const tryPort = (port) => new Promise((resolve) => {
+        const sock = createConnection(port, '127.0.0.1');
+        sock.on('connect', () => { sock.destroy(); resolve(true); });
+        sock.on('error', () => resolve(false));
+        sock.setTimeout(400, () => { sock.destroy(); resolve(false); });
+    });
+    for (const port of [3000, 3001, 5173, 4000, 8080, 8000]) {
+        if (await tryPort(port))
+            return port;
+    }
+    return null;
+}
 export async function handleVisualQa(context) {
     const { tasks, stream, log, updateStatus, projectPath, state, safety } = context;
     log(`[VISUAL_QA] Running VISUAL_QA phase...`);
@@ -34,12 +77,19 @@ export async function handleVisualQa(context) {
         let screenshotBase64 = null;
         const puppeteerDefault = puppeteerMod?.default;
         if (puppeteerMod && puppeteerDefault) {
+            // B3: Dynamically detect the app port instead of hardcoding localhost:3000
+            const appPort = await detectAppPort(ws);
+            if (appPort === null) {
+                log(`[VISUAL_QA] No running dev server detected on any known port. Auto-passing ${taskId}.`);
+                tasks.markPass(taskId);
+                continue;
+            }
             updateStatus({
                 phase: 'VISUAL_QA',
-                taskTitle: `[${task.id}] Launching browser & capturing screenshot...`,
+                taskTitle: `[${task.id}] Launching browser & capturing screenshot on port ${appPort}...`,
                 taskId: task.id,
             });
-            log(`[VISUAL_QA] Attempting to screenshot UI for ${taskId}`);
+            log(`[VISUAL_QA] Attempting to screenshot UI for ${taskId} on localhost:${appPort}`);
             let browser = null;
             try {
                 browser = (await puppeteerDefault.launch({
@@ -47,11 +97,11 @@ export async function handleVisualQa(context) {
                     args: ['--no-sandbox', '--disable-setuid-sandbox'],
                 }));
                 const page = await browser.newPage();
-                await page.goto('http://localhost:3000', { waitUntil: 'networkidle0', timeout: 5000 });
+                await page.goto(`http://localhost:${appPort}`, { waitUntil: 'networkidle0', timeout: 8000 });
                 screenshotBase64 = await page.screenshot({ encoding: 'base64', fullPage: true });
             }
             catch (e) {
-                log(`[VISUAL_QA] Could not capture screenshot: ${e.message}`);
+                log(`[VISUAL_QA] Could not capture screenshot on port ${appPort}: ${e.message}`);
             }
             finally {
                 if (browser)

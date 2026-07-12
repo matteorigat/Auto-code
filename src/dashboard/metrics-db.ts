@@ -114,7 +114,9 @@ export class MetricsDB {
       () => {
         // Drop UNIQUE constraint on model_calls (SQLite requires table recreate)
         try {
-          const tableInfo = this.db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='model_calls'").get() as { sql: string } | undefined;
+          const tableInfo = this.db
+            .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='model_calls'")
+            .get() as { sql: string } | undefined;
           if (tableInfo && tableInfo.sql.includes('UNIQUE(')) {
             this.db.exec('DROP TABLE IF EXISTS model_calls_old');
             this.db.exec('ALTER TABLE model_calls RENAME TO model_calls_old');

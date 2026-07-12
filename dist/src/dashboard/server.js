@@ -23,10 +23,15 @@ export class DashboardServer {
     server;
     wsServer;
     _sysInfoInterval;
+    // disk cache
     _lastDiskCheck;
     _lastDiskTotal;
     _lastDiskUsed;
     _lastDiskPct;
+    // macOS memory cache
+    _lastMemCheck;
+    _lastRamUsed;
+    _lastRamPct;
     constructor(port = 8081, systemController = null) {
         this.port = port;
         this.app = express();
@@ -108,22 +113,77 @@ export class DashboardServer {
         }
         return { total, idle };
     }
+    _getMemoryUsage() {
+        const total = os.totalmem();
+        // On macOS, os.freemem() only returns "free" pages, ignoring inactive/cached.
+        // Use vm_stat for a reading closer to Activity Monitor.
+        if (process.platform === 'darwin') {
+            const now = Date.now();
+            if (this._lastMemCheck && now - this._lastMemCheck < 30000 && this._lastRamUsed !== undefined) {
+                return { used: this._lastRamUsed, total, pct: this._lastRamPct };
+            }
+            // Fall back to simple arithmetic if vm_stat cache expired
+        }
+        const free = os.freemem();
+        const used = total - free;
+        const pct = parseFloat(((used / total) * 100).toFixed(1));
+        return { used, total, pct };
+    }
+    async _refreshMemoryUsage() {
+        if (process.platform !== 'darwin')
+            return;
+        try {
+            const { stdout } = await execFileAsync('vm_stat', [], {
+                encoding: 'utf-8',
+                timeout: 2000,
+            });
+            let pageSize = 16384;
+            const pages = {};
+            for (const line of stdout.trim().split('\n')) {
+                if (line.startsWith('Mach Virtual Memory Statistics:'))
+                    continue;
+                if (line.startsWith('page size of')) {
+                    const m = line.match(/(\d+)/);
+                    if (m)
+                        pageSize = parseInt(m[1]);
+                    continue;
+                }
+                const colonIdx = line.indexOf(':');
+                if (colonIdx === -1)
+                    continue;
+                const key = line.substring(0, colonIdx).trim();
+                const val = parseInt(line.substring(colonIdx + 1).replace(/[.\s]/g, ''));
+                if (!isNaN(val))
+                    pages[key] = val;
+            }
+            const active = pages['Pages active'] || 0;
+            const wired = pages['Pages wired down'] || 0;
+            const compressed = pages['Pages occupied by compressor'] || 0;
+            const usedBytes = (active + wired + compressed) * pageSize;
+            this._lastRamUsed = usedBytes;
+            this._lastRamPct = parseFloat(((usedBytes / os.totalmem()) * 100).toFixed(1));
+            this._lastMemCheck = Date.now();
+        }
+        catch {
+            // vm_stat failed, will fall back to os.freemem()
+        }
+    }
     async _getDiskUsage() {
         try {
-            const isMac = process.platform === 'darwin';
-            const args = isMac ? ['-g', '/'] : ['-BG', '/'];
-            const { stdout } = await execFileAsync('df', args, {
+            const { stdout } = await execFileAsync('df', ['-k', '/'], {
                 encoding: 'utf-8',
                 timeout: 2000,
             });
             const lines = stdout.trim().split('\n');
             const parts = lines[lines.length - 1]?.split(/\s+/);
             if (parts && parts.length >= 5) {
-                return {
-                    total: parseInt(parts[1]),
-                    used: parseInt(parts[2]),
-                    pct: parseFloat(parts[4]),
-                };
+                const usedKB = parseInt(parts[2]);
+                const availKB = parseInt(parts[3]);
+                const totalKB = usedKB + availKB;
+                const total = Math.round((totalKB / (1024 * 1024)) * 10) / 10;
+                const used = Math.round((usedKB / (1024 * 1024)) * 10) / 10;
+                const pct = totalKB > 0 ? parseFloat(((usedKB / totalKB) * 100).toFixed(1)) : 0;
+                return { total, used, pct };
             }
         }
         catch {
@@ -133,6 +193,7 @@ export class DashboardServer {
     }
     async _broadcastSysInfo() {
         try {
+            // CPU
             let cpu = 0;
             try {
                 const { total: tot1, idle: idle1 } = this._cpuTimes();
@@ -145,11 +206,13 @@ export class DashboardServer {
             catch {
                 // CPU measurement can fail on some systems
             }
-            const totalMem = os.totalmem();
-            const freeMem = os.freemem();
-            const ramUsed = totalMem - freeMem;
-            const ramPct = parseFloat(((ramUsed / totalMem) * 100).toFixed(1));
+            // RAM — refresh vm_stat on macOS every 30s
             const now = Date.now();
+            if (process.platform === 'darwin' && (!this._lastMemCheck || now - this._lastMemCheck >= 30000)) {
+                await this._refreshMemoryUsage();
+            }
+            const { used: ramUsed, total: ramTotal, pct: ramPct } = this._getMemoryUsage();
+            // DISK — refresh every 60s, compute pct from used/(used+available)
             if (!this._lastDiskCheck || now - this._lastDiskCheck >= 60000) {
                 const disk = await this._getDiskUsage();
                 if (disk) {
@@ -170,7 +233,7 @@ export class DashboardServer {
                     cpuCores: os.cpus().length,
                     uptime: os.uptime(),
                     ramUsed,
-                    ramTotal: totalMem,
+                    ramTotal,
                     ramPct,
                     ram_pct: ramPct,
                     diskUsed: this._lastDiskUsed || 0,

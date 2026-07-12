@@ -336,5 +336,3 @@ export class TelegramChannel {
     this.updateStatus({ cost });
   }
 }
-
-export default TelegramChannel;
