@@ -1,0 +1,32 @@
+#!/bin/sh
+# Pre-commit: blocca commit contenenti segreti.
+# - Se `gitleaks` è installato, controlla gli staged file.
+# - Altrimenti fallback minimale su pattern ad alta confidenza.
+set -e
+
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --verbose --config .gitleaks.toml || exit 1
+  exit 0
+fi
+
+# Fallback senza gitleaks: cerca pattern tipici di chiavi reali negli staged.
+# (I placeholder del repo tipo "xxxxx", "replace-with-..." non matchano.)
+PATTERN='sk-(or-v1-|proj-|live-)[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{35}|ntn_[A-Za-z0-9_]{15,}|gsk_[A-Za-z0-9_]{15,}|xai-[A-Za-z0-9_-]{15,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----|bot[0-9]{8,}:AA[A-Za-z0-9_-]{30,}'
+
+# Solo file tracciati aggiunti/modificati in staging (esclude lockfile generati).
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+matches=$(git diff --cached --no-color -G "$PATTERN" -- . ':!package-lock.json' || true)
+
+if [ -n "$matches" ]; then
+  echo "[pre-commit] ✗ Segreti potenziali rilevati nello staging:" >&2
+  echo "$matches" | sed -E 's/(sk-(or-v1-|proj-|live-)[A-Za-z0-9_-]{4})[A-Za-z0-9_-]*/\1***/g; s/(AIza)[A-Za-z0-9_-]*/\1***/g' | head -n 20 >&2
+  echo "[pre-commit] Rimuovi i segreti e usa variabili d'ambiente (vedi .env.example)." >&2
+  exit 1
+fi
+
+exit 0

@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createServer, type Server } from 'node:http';
+import { randomBytes } from 'node:crypto';
 import { getAppBus } from '../core/app-bus.js';
 import config from '../config/index.js';
 
@@ -59,6 +60,22 @@ export class ProcessManager {
       return;
     }
 
+    // Secrets come from env only (config resolves the OmniRoute key, generating
+    // a per-process ephemeral value when unset). JWT/password are also ephemeral
+    // when unset — never use hardcoded credentials.
+    const omnirouteKey =
+      process.env.API_KEY_SECRET || process.env.OMNIROUTE_API_KEY || config.omniroute.apiKey;
+    const jwtSecret = process.env.JWT_SECRET || randomBytes(32).toString('hex');
+    const initialPassword =
+      process.env.INITIAL_PASSWORD || `omniroute-${randomBytes(12).toString('hex')}`;
+    if (!process.env.JWT_SECRET) {
+      console.warn('[CONFIG WARNING] JWT_SECRET not set — using an ephemeral value for this process only.');
+    }
+    if (!process.env.INITIAL_PASSWORD) {
+      console.warn(
+        '[CONFIG WARNING] INITIAL_PASSWORD not set — using an ephemeral value for this process only. Set INITIAL_PASSWORD in .env for a stable OmniRoute login.',
+      );
+    }
     const cleanEnv: Record<string, string> = {
       PATH: `${join(node22Dir, 'bin')}:${process.env.PATH || ''}`,
       NVM_BIN: join(node22Dir, 'bin'),
@@ -66,12 +83,10 @@ export class ProcessManager {
       HOME: homedir(),
       USER: process.env.USER || '',
       PORT: String(config.omniroute.port),
-      JWT_SECRET: process.env.JWT_SECRET || '***REMOVED***',
-      OMNIROUTE_API_KEY:
-        process.env.API_KEY_SECRET || process.env.OMNIROUTE_API_KEY || '***REMOVED***',
-      API_KEY_SECRET:
-        process.env.API_KEY_SECRET || process.env.OMNIROUTE_API_KEY || '***REMOVED***',
-      INITIAL_PASSWORD: process.env.INITIAL_PASSWORD || '***REMOVED***',
+      JWT_SECRET: jwtSecret,
+      OMNIROUTE_API_KEY: omnirouteKey,
+      API_KEY_SECRET: omnirouteKey,
+      INITIAL_PASSWORD: initialPassword,
       DATA_DIR: process.env.OMNIROUTE_DATA_DIR || join(homedir(), '.omniroute'),
     };
 

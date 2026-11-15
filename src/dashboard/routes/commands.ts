@@ -74,7 +74,11 @@ export function createCommandsRouter({ systemController, telemetryStore, config 
 
       if (cmd === 'resume') {
         if (!loopManager.childProc) {
-          let chatId: number = config.telegram?.allowedUserIds?.[0] || ***REMOVED***;
+          const allowedId = config.telegram?.allowedUserIds?.[0];
+          if (!allowedId) {
+            return res.status(500).json({ error: 'TELEGRAM_ALLOWED_USER_ID not configured' });
+          }
+          let chatId: number = allowedId;
           try {
             const statePath = join(HYDRA_DIR, 'chat-state.json');
             try {
@@ -111,7 +115,11 @@ export function createCommandsRouter({ systemController, telemetryStore, config 
           return res.status(400).json({ error: 'Loop is already running' });
         }
 
-        let chatId: number = config.telegram?.allowedUserIds?.[0] || ***REMOVED***;
+        const allowedId = config.telegram?.allowedUserIds?.[0];
+        if (!allowedId) {
+          return res.status(500).json({ error: 'TELEGRAM_ALLOWED_USER_ID not configured' });
+        }
+        let chatId: number = allowedId;
         try {
           const statePath = join(HYDRA_DIR, 'chat-state.json');
           try {

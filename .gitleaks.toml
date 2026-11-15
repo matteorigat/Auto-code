@@ -1,0 +1,12 @@
+# Gitleaks: allowlist per i placeholder non-segreti del repo.
+title = "opencode-bridge-telegram gitleaks config"
+
+[allowlist]
+description = "Placeholder intenzionali (non segreti)"
+regexes = [
+  '''(sk-or-v1-|sk-|AIza|ntn_|gsk_|xai-)(xxxxx|replace-.*|inserisci.*|local|.*xxx.*)''',
+  '''\{env:[A-Z_]+\}''',
+]
+
+# Gli .env reali non devono mai entrare in staging: già in .gitignore.
+# Questo hook è un'ultima rete di sicurezza, non un sostituto del review.

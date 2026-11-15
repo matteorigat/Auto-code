@@ -5,7 +5,7 @@
   "compaction": { "auto": true, "prune": true, "reserved": 30000 },
   "provider": {
     "openai": {
-      "apiKey": "***REMOVED***",
+      "apiKey": "{env:OMNIROUTE_API_KEY}",
       "options": {
         "baseURL": "http://127.0.0.1:20128/v1",
         "headerTimeout": 120000,

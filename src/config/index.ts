@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { homedir } from 'os';
 import { existsSync } from 'fs';
+import { randomBytes } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..', '..');
@@ -34,6 +35,25 @@ const missingRequired: string[] = [];
 function requireEnv(key: string): string | undefined {
   if (!process.env[key]) missingRequired.push(key);
   return process.env[key];
+}
+
+// Sync OmniRoute key aliases so bridge, omniroute and opencode share one value.
+// Never hardcode a fallback secret: if unset, generate a per-process ephemeral
+// key (persist across restarts only when OMNIROUTE_API_KEY is set in .env).
+function resolveOmniRouteKey(): string {
+  const existing = process.env.OMNIROUTE_API_KEY || process.env.API_KEY_SECRET;
+  if (existing) {
+    process.env.OMNIROUTE_API_KEY = existing;
+    process.env.API_KEY_SECRET = existing;
+    return existing;
+  }
+  const ephemeral = randomBytes(32).toString('hex');
+  process.env.OMNIROUTE_API_KEY = ephemeral;
+  process.env.API_KEY_SECRET = ephemeral;
+  console.warn(
+    '[CONFIG WARNING] OMNIROUTE_API_KEY/API_KEY_SECRET not set — using an ephemeral key for this process only. Set a stable key in .env to keep dashboard/omniroute/opencode in sync across restarts.',
+  );
+  return ephemeral;
 }
 
 // Sync Kilo API Keys
@@ -122,7 +142,7 @@ const config: AppConfig = {
   omniroute: {
     port: parseNum(process.env.OMNIROUTE_PORT, 20128),
     url: process.env.OMNIROUTE_URL || `http://127.0.0.1:${parseNum(process.env.OMNIROUTE_PORT, 20128)}`,
-    apiKey: process.env.OMNIROUTE_API_KEY || process.env.API_KEY_SECRET || '***REMOVED***',
+    apiKey: resolveOmniRouteKey(),
     providerKeys: {
       openrouter: process.env.OPENROUTER_API_KEY || '',
       nvidia: process.env.NVIDIA_API_KEY || '',
