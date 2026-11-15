@@ -48,16 +48,30 @@ export class ProcessManager {
     if (this.omnirouteProc) return;
     const port = config.omniroute.port;
 
+    // Resolve the omniroute executable. Prefer OMNIROUTE_BIN (env), then a
+    // legacy nvm node22 global install (kept for backward compat), finally
+    // `omniroute` from PATH (e.g. homebrew/npm global).
     const nvmDir = join(homedir(), '.nvm', 'versions', 'node');
     const node22Dir = join(nvmDir, 'v22.22.3');
     const node22Bin = join(node22Dir, 'bin', 'node');
-    const omnirouteEntry = join(node22Dir, 'lib', 'node_modules', 'omniroute', 'bin', 'omniroute.mjs');
-
-    if (!existsSync(omnirouteEntry)) {
-      console.warn(
-        'omniroute not found in nvm node22 global modules, skipping. Install with: nvm use 22 && npm install -g omniroute',
-      );
-      return;
+    const legacyEntry = join(
+      node22Dir,
+      'lib',
+      'node_modules',
+      'omniroute',
+      'bin',
+      'omniroute.mjs',
+    );
+    let spawnTarget: string;
+    let spawnArgs: string[] = [];
+    if (process.env.OMNIROUTE_BIN) {
+      spawnTarget = process.env.OMNIROUTE_BIN;
+    } else if (existsSync(legacyEntry)) {
+      spawnTarget = node22Bin;
+      spawnArgs = [legacyEntry];
+    } else {
+      spawnTarget = 'omniroute';
+      spawnArgs = [];
     }
 
     // Secrets come from env only (config resolves the OmniRoute key, generating
@@ -90,13 +104,15 @@ export class ProcessManager {
       DATA_DIR: process.env.OMNIROUTE_DATA_DIR || join(homedir(), '.omniroute'),
     };
 
-    this.omnirouteProc = spawn(node22Bin, [omnirouteEntry], {
+    this.omnirouteProc = spawn(spawnTarget, spawnArgs, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: cleanEnv,
     });
 
     this.omnirouteProc.on('error', (err: Error) =>
-      console.error('[omniroute] spawn error:', err.message),
+      console.error(
+        `[omniroute] spawn error (${spawnTarget}): ${err.message}. Install with: npm install -g omniroute (or set OMNIROUTE_BIN in .env).`,
+      ),
     );
     this.omnirouteProc.stdout?.on('data', (d: Buffer) =>
       pipeOutput(process.stdout, 'omniroute', d.toString()),
