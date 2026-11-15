@@ -361,7 +361,7 @@ Se arriva nuovo task da Notion:
 - **Message splitting**: chunks at 4000 chars, breaks at last `\n` boundary
 - **Markdown safety**: strips triple backticks from code blocks to prevent parse errors
 - **Session lifecycle**: auto-create on first message, `/new` resets + deletes messages
-- **Authorization**: `TELEGRAM_ALLOWED_USER_ID` comma-separated list (default: `***REMOVED***`)
+- **Authorization**: `TELEGRAM_ALLOWED_USER_ID` comma-separated list (default: `<your-telegram-user-id>`)
 
 ### 6.2 Durable State (`src/core/durable-state.mjs`)
 - **File**: `.hydra/loop-checkpoint.json`
@@ -504,7 +504,7 @@ Key architectural patterns:
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
 | `TELEGRAM_BOT_TOKEN` | **Yes** | — | Bot token from @BotFather |
-| `TELEGRAM_ALLOWED_USER_ID` | No | `***REMOVED***` | Comma-separated Telegram user IDs |
+| `TELEGRAM_ALLOWED_USER_ID` | No | `<your-telegram-user-id>` | Comma-separated Telegram user IDs |
 | `NOTION_API_TOKEN` | For Notion | — | Notion internal integration token |
 | `NOTION_DATABASE_ID` | For DB mode | — | Notion database ID |
 | `NOTION_PAGE_ID` | For page mode | — | Notion page ID (falls back to db id) |
